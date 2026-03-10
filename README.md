@@ -99,6 +99,7 @@ docker run -it \
 Paste this single command. It installs all system packages, Python libraries, Node.js 22, clones the repo, installs dependencies, and starts the app:
 
 ```bash
+apt update && apt install -y curl
 curl -fsSL https://raw.githubusercontent.com/Sompote/Claw_Cowork/master/install.sh | bash
 ```
 
