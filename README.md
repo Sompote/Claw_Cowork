@@ -68,27 +68,14 @@ The AI agent can:
 
 ## Docker Setup — From Scratch (Ubuntu)
 
-This is the recommended way to run Claw Cowork. Follow these steps in order from a fresh Ubuntu Docker container.
+> **Docker not installed yet?**
+> ```bash
+> # Ubuntu/Debian host
+> sudo apt-get install -y docker.io && sudo systemctl start docker
+> ```
+> macOS/Windows: install [Docker Desktop](https://www.docker.com/products/docker-desktop/).
 
-### 1. Install Docker on your host
-
-**Ubuntu / Debian host:**
-```bash
-sudo apt-get update
-sudo apt-get install -y docker.io
-sudo systemctl start docker
-sudo systemctl enable docker
-# Allow your user to run Docker without sudo (log out and back in after)
-sudo usermod -aG docker $USER
-```
-
-**macOS host:** Download and install Docker Desktop.
-
-**Windows host:** Download Docker Desktop and enable the WSL 2 backend.
-
----
-
-### 2. Start a fresh Ubuntu container
+### Step 1 — Start a fresh Ubuntu container (on your host machine)
 
 ```bash
 docker run -it \
@@ -97,132 +84,77 @@ docker run -it \
   ubuntu:22.04 bash
 ```
 
-All commands from this point run **inside the container**.
-
-**To also mount host folders** so the AI can access your files:
-```bash
-# Linux host — mount your home directory (recommended: gives access to subfolders without restarting)
-docker run -it \
-  --name claw-cowork \
-  -p 3001:3001 \
-  -v /home/yourname:/mnt/host:rw \
-  ubuntu:22.04 bash
-
-# macOS host
-docker run -it \
-  --name claw-cowork \
-  -p 3001:3001 \
-  -v /Users/yourname:/mnt/host:rw \
-  ubuntu:22.04 bash
-```
-
-> You cannot add volume mounts after the container is created. If you need more folders, stop the container and recreate it with updated `-v` flags — or mount a large parent folder upfront.
+> **Need to mount host folders?**
+> ```bash
+> docker run -it --name claw-cowork -p 3001:3001 \
+>   -v /home/yourname:/mnt/host:rw \
+>   ubuntu:22.04 bash
+> ```
+> You cannot add mounts after the container is created — mount a large parent folder upfront.
 
 ---
 
-### 3. Update packages and install system dependencies
+### Step 2 — Run the installer (inside the container)
+
+Paste this single command. It installs all system packages, Python libraries, Node.js 22, clones the repo, installs dependencies, and starts the app:
 
 ```bash
-apt-get update && apt-get upgrade -y
-
-apt-get install -y \
-  curl \
-  git \
-  wget \
-  gnupg \
-  ca-certificates \
-  build-essential \
-  python3 \
-  python3-pip \
-  python3-venv \
-  nano
+curl -fsSL https://raw.githubusercontent.com/Sompote/Claw_Cowork/master/install.sh | bash
 ```
 
-Verify Python:
+Open **http://localhost:3001** in your browser.
+
+<details>
+<summary>What the installer does (step by step)</summary>
+
+1. `apt-get` — installs `curl`, `git`, `build-essential`, `python3`, `python3-pip`, etc.
+2. `pip3` — installs `pandas`, `numpy`, `matplotlib`, `seaborn`, `scipy`, `fpdf2`, `python-docx`, `reportlab`, `pillow`
+3. Node.js 22 via NodeSource
+4. `git clone` the Claw Cowork repository to `/root/claw_cowork`
+5. `npm install` (server) + `npm install --prefix client` (frontend)
+6. Creates `.env` from `.env.example` if missing
+7. Starts the app with `npm run dev`
+
+</details>
+
+<details>
+<summary>Manual install (run each step yourself)</summary>
+
+**Inside the container:**
 ```bash
-python3 --version
-# Python 3.10.x or similar
+# System packages
+apt-get update && apt-get install -y curl git build-essential python3 python3-pip nano
 
-pip3 --version
-```
+# Python packages
+pip3 install requests pandas numpy matplotlib seaborn scipy fpdf2 python-docx reportlab pillow
 
-Install common Python packages the AI uses:
-```bash
-pip3 install requests pandas numpy matplotlib seaborn scipy
-```
-
----
-
-### 4. Install Node.js 22
-
-```bash
-# Add the NodeSource repository
+# Node.js 22
 curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-
-# Install Node.js
 apt-get install -y nodejs
-```
 
-Verify:
-```bash
-node --version
-# v22.x.x
-
-npm --version
-# 10.x.x
-```
-
----
-
-### 5. Clone and start with one command
-
-```bash
+# Clone
 cd /root
-git clone https://github.com/Sompote/claw_cowork.git
+git clone https://github.com/Sompote/Claw_Cowork.git claw_cowork
 cd claw_cowork
+
+# Install & run
 bash setup.sh
 ```
 
-`setup.sh` installs all dependencies (server + client) and starts the app automatically on port 3001. Open **http://localhost:3001** in your browser.
-
-<details>
-<summary>Manual steps (if you prefer to run each step yourself)</summary>
-
-**Install server dependencies:**
+**Set access token (recommended before first run):**
 ```bash
-npm install
-```
-
-**Install client dependencies:**
-```bash
-npm install --prefix client
-```
-
-**Set up access token (strongly recommended):**
-```bash
-cp .env.example .env
-nano .env
+nano /root/claw_cowork/.env
 ```
 ```env
 ACCESS_TOKEN=your-secret-token-here
 PORT=3001
-```
-If you skip this, the app runs with no authentication — anyone who can reach the port can use it.
-
-**Run the app:**
-```bash
-# Development mode (hot reload)
-npm run dev
-
-# Production mode (build then serve)
-npm start
 ```
 
 </details>
 
 ---
 
-### 6. Add your API key
+### Step 3 — Add your API key
 
 Go to **Settings** and enter:
 - **API Key** — Your OpenRouter key (`sk-or-v1-...`) or any OpenAI-compatible key
@@ -233,7 +165,7 @@ Click **Test Connection** to verify, then **Save changes**.
 
 ---
 
-### 7. Reconnect to the container later
+### Reconnect to the container later
 
 If you close your terminal, the container stops. To resume:
 ```bash
