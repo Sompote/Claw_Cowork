@@ -54,8 +54,14 @@ cp .env.example .env
 
 ### 3. Start the server
 
+**Development** (hot reload, Vite embedded):
 ```bash
 npm run dev
+```
+
+**Production** (builds frontend then starts server):
+```bash
+npm start
 ```
 
 Open **http://localhost:3001** in your browser.
@@ -332,12 +338,10 @@ The agent reads SKILL.md instructions via `load_skill` before executing a skill.
 ## Production Build
 
 ```bash
-# Build the React frontend
-npm run build
-
-# Start production server
-NODE_ENV=production npm start
+npm start
 ```
+
+`npm start` automatically builds the React frontend (`client/dist/`) and then starts the production server. Both steps are combined — no separate build command needed.
 
 The production server serves the built `client/dist/` statically and handles all API routes on the same port.
 
@@ -356,17 +360,21 @@ npm install -g pm2
 ### Start in development mode
 
 ```bash
-pm2 start npm --name claw-cowork -- run dev
+pm2 start npm --name claw-cowork --cwd /path/to/claw_cowork -- run dev
 ```
 
 ### Start in production mode
 
 ```bash
-npm run build
-pm2 start npm --name claw-cowork -- start
+pm2 start npm --name claw-cowork --cwd /path/to/claw_cowork -- start
+pm2 save
 ```
 
-Or use an ecosystem file for more control — create `ecosystem.config.js`:
+`npm start` handles the build automatically — no separate build step needed.
+
+> **Important:** Always pass `--cwd` pointing to the `claw_cowork/` subdirectory (where `package.json` lives), not the parent folder.
+
+Or use an ecosystem file for more control — create `ecosystem.config.js` inside `claw_cowork/`:
 
 ```js
 module.exports = {
@@ -375,6 +383,7 @@ module.exports = {
       name: 'claw-cowork',
       script: 'npm',
       args: 'start',
+      cwd: '/path/to/claw_cowork',
       env: {
         NODE_ENV: 'production',
         PORT: 3001,
@@ -387,8 +396,8 @@ module.exports = {
 Then run:
 
 ```bash
-npm run build
 pm2 start ecosystem.config.js
+pm2 save
 ```
 
 ### Useful PM2 commands
@@ -418,7 +427,7 @@ pm2 save           # saves the current process list
 |---------|-------------|
 | `npm run dev` | Start dev server with hot reload (Vite embedded) |
 | `npm run build` | Build React client to `client/dist/` |
-| `npm start` | Start production server |
+| `npm start` | Build frontend + start production server |
 
 ---
 
