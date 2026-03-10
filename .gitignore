@@ -13,6 +13,7 @@ dist/
 data/chat_history.json
 data/projects.json
 data/tasks.json
+data/settings.json
 
 # Logs & temp
 *.log

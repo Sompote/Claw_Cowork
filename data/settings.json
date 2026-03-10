@@ -1,9 +1,0 @@
-{
-  "sandboxDir": "/root/claw_cowork/claw_cowork",
-  "apiKey": "",
-  "apiModel": "openai/gpt-4o-mini",
-  "apiUrl": "https://openrouter.ai/api/v1/chat/completions",
-  "mcpTools": [],
-  "webSearchEnabled": false,
-  "openRouterSearchEnabled": false
-}
