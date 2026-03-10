@@ -179,7 +179,7 @@ npm --version
 ```bash
 cd /root
 git clone https://github.com/Sompote/claw_cowork.git
-cd claw_cowork/claw_cowork
+cd claw_cowork
 ```
 
 ---
@@ -251,7 +251,7 @@ docker start claw-cowork
 docker exec -it claw-cowork bash
 
 # Start the app again
-cd /root/claw_cowork/claw_cowork
+cd /root/claw_cowork
 npm run dev
 ```
 
@@ -320,7 +320,7 @@ services:
         curl -fsSL https://deb.nodesource.com/setup_22.x | bash - &&
         apt-get install -y nodejs &&
         git clone https://github.com/Sompote/claw_cowork.git &&
-        cd claw_cowork/claw_cowork &&
+        cd claw_cowork &&
         npm install &&
         cd client && npm install && cd .. &&
         echo 'ACCESS_TOKEN=your-secret-token-here' > .env &&
