@@ -341,6 +341,75 @@ The production server serves the built `client/dist/` statically and handles all
 
 ---
 
+## Running with PM2
+
+[PM2](https://pm2.keymetrics.io/) keeps the server alive in the background and auto-restarts it on crashes.
+
+### Install PM2
+
+```bash
+npm install -g pm2
+```
+
+### Start in development mode
+
+```bash
+pm2 start npm --name claw-cowork -- run dev
+```
+
+### Start in production mode
+
+```bash
+npm run build
+pm2 start npm --name claw-cowork -- start
+```
+
+Or use an ecosystem file for more control — create `ecosystem.config.js`:
+
+```js
+module.exports = {
+  apps: [
+    {
+      name: 'claw-cowork',
+      script: 'npm',
+      args: 'start',
+      env: {
+        NODE_ENV: 'production',
+        PORT: 3001,
+      },
+    },
+  ],
+};
+```
+
+Then run:
+
+```bash
+npm run build
+pm2 start ecosystem.config.js
+```
+
+### Useful PM2 commands
+
+| Command | Description |
+|---------|-------------|
+| `pm2 list` | Show all running processes |
+| `pm2 logs claw-cowork` | Stream logs |
+| `pm2 restart claw-cowork` | Restart the app |
+| `pm2 stop claw-cowork` | Stop the app |
+| `pm2 delete claw-cowork` | Remove from PM2 |
+| `pm2 save` | Save process list |
+| `pm2 startup` | Auto-start PM2 on system boot |
+
+### Auto-start on reboot
+
+```bash
+pm2 startup        # generates a system command — run the output command
+pm2 save           # saves the current process list
+```
+
+---
+
 ## Scripts
 
 | Command | Description |
