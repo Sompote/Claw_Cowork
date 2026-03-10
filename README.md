@@ -6,6 +6,303 @@ A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork
 
 ---
 
+## SECURITY WARNING
+
+> **THIS APPLICATION EXECUTES AI-GENERATED CODE, SHELL COMMANDS, AND THIRD-PARTY SKILLS ON YOUR MACHINE.**
+
+The AI agent can:
+- Execute arbitrary **shell commands**
+- Run **Python scripts**
+- **Read and write files** anywhere the process can access
+- **Install third-party skills** from the internet
+- **Spawn subagents** that repeat all of the above
+
+**Running this app directly on your host system is a serious security risk.**
+
+### What you MUST do
+
+- **Run inside Docker** — isolate all execution from your host system
+- **Set an `ACCESS_TOKEN`** before connecting to any network
+- **Do not expose port 3001 publicly** without authentication
+- **Review access levels** — use Read Only or Read & Write for external folders whenever possible; only grant Full Access when necessary
+
+> Recommended environment: **Docker container on Ubuntu** (instructions below).
+> Do NOT run as root on your host system.
+
+---
+
+## Docker Setup — From Scratch (Ubuntu)
+
+This is the recommended way to run Claw Cowork. Follow these steps in order from a fresh Ubuntu Docker container.
+
+### 1. Install Docker on your host
+
+**Ubuntu / Debian host:**
+```bash
+sudo apt-get update
+sudo apt-get install -y docker.io
+sudo systemctl start docker
+sudo systemctl enable docker
+# Allow your user to run Docker without sudo (log out and back in after)
+sudo usermod -aG docker $USER
+```
+
+**macOS host:** Download and install Docker Desktop.
+
+**Windows host:** Download Docker Desktop and enable the WSL 2 backend.
+
+---
+
+### 2. Start a fresh Ubuntu container
+
+```bash
+docker run -it \
+  --name claw-cowork \
+  -p 3001:3001 \
+  ubuntu:22.04 bash
+```
+
+All commands from this point run **inside the container**.
+
+**To also mount host folders** so the AI can access your files:
+```bash
+# Linux host — mount your home directory (recommended: gives access to subfolders without restarting)
+docker run -it \
+  --name claw-cowork \
+  -p 3001:3001 \
+  -v /home/yourname:/mnt/host:rw \
+  ubuntu:22.04 bash
+
+# macOS host
+docker run -it \
+  --name claw-cowork \
+  -p 3001:3001 \
+  -v /Users/yourname:/mnt/host:rw \
+  ubuntu:22.04 bash
+```
+
+> You cannot add volume mounts after the container is created. If you need more folders, stop the container and recreate it with updated `-v` flags — or mount a large parent folder upfront.
+
+---
+
+### 3. Update packages and install system dependencies
+
+```bash
+apt-get update && apt-get upgrade -y
+
+apt-get install -y \
+  curl \
+  git \
+  wget \
+  gnupg \
+  ca-certificates \
+  build-essential \
+  python3 \
+  python3-pip \
+  python3-venv \
+  nano
+```
+
+Verify Python:
+```bash
+python3 --version
+# Python 3.10.x or similar
+
+pip3 --version
+```
+
+Install common Python packages the AI uses:
+```bash
+pip3 install requests pandas numpy matplotlib seaborn scipy
+```
+
+---
+
+### 4. Install Node.js 22
+
+```bash
+# Add the NodeSource repository
+curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
+
+# Install Node.js
+apt-get install -y nodejs
+```
+
+Verify:
+```bash
+node --version
+# v22.x.x
+
+npm --version
+# 10.x.x
+```
+
+---
+
+### 5. Clone the repository
+
+```bash
+cd /root
+git clone https://github.com/Sompote/claw_cowork.git
+cd claw_cowork/claw_cowork
+```
+
+---
+
+### 6. Install dependencies
+
+```bash
+# Install server dependencies
+npm install
+
+# Install frontend dependencies
+cd client && npm install && cd ..
+```
+
+---
+
+### 7. Set up access token (strongly recommended)
+
+```bash
+cp .env.example .env
+nano .env
+```
+
+Set your token:
+```env
+ACCESS_TOKEN=your-secret-token-here
+PORT=3001
+```
+
+If you skip this, the app runs with no authentication — anyone who can reach the port can use it.
+
+---
+
+### 8. Run the app
+
+**Development mode** (hot reload, Vite embedded):
+```bash
+npm run dev
+```
+
+Open **http://localhost:3001** in your browser.
+
+**Production mode** (builds frontend then starts server):
+```bash
+npm start
+```
+
+---
+
+### 9. Add your API key
+
+Go to **Settings** and enter:
+- **API Key** — Your OpenRouter key (`sk-or-v1-...`) or any OpenAI-compatible key
+- **API URL** — `https://openrouter.ai/api/v1/chat/completions` (default)
+- **Model** — e.g. `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.0-flash`
+
+Click **Test Connection** to verify, then **Save changes**.
+
+---
+
+### 10. Reconnect to the container later
+
+If you close your terminal, the container stops. To resume:
+```bash
+# Start the stopped container
+docker start claw-cowork
+
+# Open a shell inside it
+docker exec -it claw-cowork bash
+
+# Start the app again
+cd /root/claw_cowork/claw_cowork
+npm run dev
+```
+
+To keep the app running after you disconnect, use PM2 (see [Running with PM2](#running-with-pm2) below).
+
+---
+
+## Mounting Host Folders
+
+Give the AI access to specific directories on your host by mounting them as Docker volumes at container startup.
+
+```bash
+# Single folder, read-write
+docker run -it --name claw-cowork -p 3001:3001 \
+  -v /home/yourname/projects:/mnt/projects:rw \
+  ubuntu:22.04 bash
+
+# Single folder, read-only
+docker run -it --name claw-cowork -p 3001:3001 \
+  -v /home/yourname/data:/mnt/data:ro \
+  ubuntu:22.04 bash
+
+# Multiple folders
+docker run -it --name claw-cowork -p 3001:3001 \
+  -v /home/yourname/projects:/mnt/projects:rw \
+  -v /home/yourname/datasets:/mnt/data:ro \
+  ubuntu:22.04 bash
+```
+
+Inside the app: create a project with **External Folder** pointing to `/mnt/projects` or `/mnt/data`, and choose the appropriate access level.
+
+**Tips:**
+- `:rw` = read-write, `:ro` = read-only
+- Mount a large parent folder (e.g. your home directory) to avoid restarting Docker when you need to access a new subfolder
+- The app's **Overview** tab generates ready-to-copy `docker run` and `docker-compose` mount commands for your projects
+
+---
+
+## docker-compose Setup (Alternative)
+
+Create `docker-compose.yml` on your host:
+
+```yaml
+version: "3.9"
+
+services:
+  claw-cowork:
+    image: ubuntu:22.04
+    container_name: claw-cowork
+    ports:
+      - "3001:3001"
+    volumes:
+      - /home/yourname/projects:/mnt/projects:rw
+      - claw-data:/root/claw_cowork
+    working_dir: /root
+    environment:
+      - ACCESS_TOKEN=your-secret-token-here
+      - PORT=3001
+    stdin_open: true
+    tty: true
+    command: >
+      bash -c "
+        apt-get update &&
+        apt-get install -y curl git python3 python3-pip build-essential nano &&
+        pip3 install requests pandas numpy matplotlib seaborn scipy &&
+        curl -fsSL https://deb.nodesource.com/setup_22.x | bash - &&
+        apt-get install -y nodejs &&
+        git clone https://github.com/Sompote/claw_cowork.git &&
+        cd claw_cowork/claw_cowork &&
+        npm install &&
+        cd client && npm install && cd .. &&
+        echo 'ACCESS_TOKEN=your-secret-token-here' > .env &&
+        npm run dev
+      "
+
+volumes:
+  claw-data:
+```
+
+Run with:
+```bash
+docker-compose up
+```
+
+---
+
 ## Features
 
 ### Frontend (from Tiger Cowork)
@@ -30,14 +327,16 @@ Vite dev server runs in middleware mode embedded inside Express — both the Rea
 
 ---
 
-## Quick Start
+## Quick Start (Local — Not Recommended)
+
+> Only do this if you understand the security risks. Docker is strongly preferred.
 
 ### Requirements
 - Node.js 18+
 - Python 3 (for `run_python` tool)
 - npm
 
-### 1. Install dependencies
+### Install
 
 ```bash
 cd claw_cowork
@@ -45,35 +344,19 @@ npm install
 cd client && npm install && cd ..
 ```
 
-### 2. Configure environment (optional)
+### Configure environment (optional)
 
 ```bash
 cp .env.example .env
-# Edit .env if needed (PORT, SANDBOX_DIR, ACCESS_TOKEN)
+# Edit .env: set PORT, SANDBOX_DIR, ACCESS_TOKEN
 ```
 
-### 3. Start the server
+### Run
 
-**Development** (hot reload, Vite embedded):
 ```bash
 npm run dev
+# Open http://localhost:3001
 ```
-
-**Production** (builds frontend then starts server):
-```bash
-npm start
-```
-
-Open **http://localhost:3001** in your browser.
-
-### 4. Add your API key
-
-Go to **Settings** and enter:
-- **API Key** — Your OpenRouter key (`sk-or-v1-...`) or any OpenAI-compatible key
-- **API URL** — `https://openrouter.ai/api/v1/chat/completions` (default)
-- **Model** — e.g. `openai/gpt-4o-mini`, `anthropic/claude-sonnet-4-5`, `google/gemini-2.0-flash`
-
-Click **Test Connection** to verify, then **Save changes**.
 
 ---
 
@@ -197,18 +480,10 @@ User message
 └─────────────────────────────────────────────────┘
     │
     ▼
-┌─────────────────────────────────────────────────┐
-│  Nudge Loop (if user wanted charts but none     │
-│  were generated — up to 3 extra rounds)         │
-└─────────────────────────────────────────────────┘
-    │
-    ▼
 Final summary LLM call → response to user
 ```
 
 ### Subagent Pattern (from OpenClaw)
-
-The `spawn_subagent` tool lets the main agent delegate sub-tasks:
 
 ```
 Main Agent (depth 0)
@@ -278,16 +553,6 @@ Main Agent (depth 0)
 | `agentEvalThreshold` | Min score (0.0–1.0) to consider satisfied | `0.7` |
 | `agentMaxReflectionRetries` | Max re-evaluation rounds | `2` |
 
-### OpenRouter Web Search
-
-| Field | Description | Default |
-|-------|-------------|---------|
-| `openRouterSearchEnabled` | Enable `openrouter_web_search` tool | `false` |
-| `openRouterSearchApiKey` | OpenRouter API key for search | — |
-| `openRouterSearchModel` | Model for search (must support web plugin) | `openai/gpt-4.1-mini` |
-| `openRouterSearchMaxTokens` | Max output tokens per search | `4096` |
-| `openRouterSearchMaxResults` | Max web results (1–10) | `5` |
-
 ---
 
 ## Environment Variables
@@ -295,9 +560,39 @@ Main Agent (depth 0)
 ```env
 PORT=3001              # Server port (default: 3001)
 SANDBOX_DIR=           # Sandbox working directory (default: project root)
-ACCESS_TOKEN=          # Optional UI access token (blank = no auth)
+ACCESS_TOKEN=          # UI access token (blank = no auth — not recommended)
 NODE_ENV=development   # Set to "production" to serve built client
 ```
+
+---
+
+## Running with PM2
+
+PM2 keeps the app running in the background inside Docker and auto-restarts it on crashes.
+
+```bash
+# Install PM2 globally
+npm install -g pm2
+
+# Build and start in production mode
+npm run build
+pm2 start npm --name "claw-cowork" -- start
+
+# View logs
+pm2 logs claw-cowork
+
+# Save process list (survives container restarts)
+pm2 startup
+pm2 save
+```
+
+| Command | Description |
+|---------|-------------|
+| `pm2 list` | Show all running processes |
+| `pm2 logs claw-cowork` | Stream logs |
+| `pm2 restart claw-cowork` | Restart the app |
+| `pm2 stop claw-cowork` | Stop the app |
+| `pm2 delete claw-cowork` | Remove from PM2 |
 
 ---
 
@@ -311,123 +606,6 @@ Supports:
 - **Stdio** — `npx @modelcontextprotocol/server-github`
 
 Discovered tools appear as `mcp_{serverName}_{toolName}` and are available to the agent automatically.
-
----
-
-## Projects
-
-Each project has:
-- **Working folder** — sandbox (inside the sandbox dir) or external local path
-- **Folder access** — `readonly` | `readwrite` | `full` (exec allowed)
-- **Memory** — `memory.md` file in the working folder; injected into every project chat
-- **Skills** — priority skills pre-loaded for that project's context
-
----
-
-## Skills (ClawHub)
-
-Skills are stored in `ClawCowork_skills/<slug>/SKILL.md`.
-
-Install via the **Skills** page or by asking the agent:
-> "Install the duckduckgo-search skill from ClawHub"
-
-The agent reads SKILL.md instructions via `load_skill` before executing a skill.
-
----
-
-## Production Build
-
-```bash
-npm start
-```
-
-`npm start` automatically builds the React frontend (`client/dist/`) and then starts the production server. Both steps are combined — no separate build command needed.
-
-The production server serves the built `client/dist/` statically and handles all API routes on the same port.
-
----
-
-## Running with PM2
-
-[PM2](https://pm2.keymetrics.io/) keeps the server alive in the background and auto-restarts it on crashes.
-
-### Install PM2
-
-```bash
-npm install -g pm2
-```
-
-### Start in development mode
-
-```bash
-pm2 start npm --name claw-cowork --cwd /path/to/claw_cowork -- run dev
-```
-
-### Start in production mode
-
-```bash
-pm2 start npm --name claw-cowork --cwd /path/to/claw_cowork -- start
-pm2 save
-```
-
-`npm start` handles the build automatically — no separate build step needed.
-
-> **Important:** Always pass `--cwd` pointing to the `claw_cowork/` subdirectory (where `package.json` lives), not the parent folder.
-
-Or use an ecosystem file for more control — create `ecosystem.config.js` inside `claw_cowork/`:
-
-```js
-module.exports = {
-  apps: [
-    {
-      name: 'claw-cowork',
-      script: 'npm',
-      args: 'start',
-      cwd: '/path/to/claw_cowork',
-      env: {
-        NODE_ENV: 'production',
-        PORT: 3001,
-      },
-    },
-  ],
-};
-```
-
-Then run:
-
-```bash
-pm2 start ecosystem.config.js
-pm2 save
-```
-
-### Useful PM2 commands
-
-| Command | Description |
-|---------|-------------|
-| `pm2 list` | Show all running processes |
-| `pm2 logs claw-cowork` | Stream logs |
-| `pm2 restart claw-cowork` | Restart the app |
-| `pm2 stop claw-cowork` | Stop the app |
-| `pm2 delete claw-cowork` | Remove from PM2 |
-| `pm2 save` | Save process list |
-| `pm2 startup` | Auto-start PM2 on system boot |
-
-### Auto-start on reboot
-
-```bash
-pm2 startup        # generates a system command — run the output command
-pm2 save           # saves the current process list
-```
-
----
-
-## Scripts
-
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start dev server with hot reload (Vite embedded) |
-| `npm run build` | Build React client to `client/dist/` |
-| `npm start` | Build frontend + start production server |
 
 ---
 
@@ -447,29 +625,13 @@ Output files generated by the agent (charts, reports, React components) are save
 
 ---
 
-## Architecture Overview
+## Scripts
 
-```
-Browser
-  │  React SPA (Chat, Projects, Files, Tasks, Skills, Settings)
-  │  Socket.IO client (streaming chat events)
-  ▼
-Express Server (port 3001)
-  ├── /api/chat          → chat.ts
-  ├── /api/projects      → projects.ts
-  ├── /api/files         → files.ts
-  ├── /api/settings      → settings.ts (+ MCP management)
-  ├── /api/skills        → skills.ts + clawhub.ts
-  ├── /api/tasks         → tasks.ts + scheduler.ts
-  ├── /api/python        → python.ts
-  ├── /api/tools         → tools.ts
-  ├── /sandbox/*         → static sandbox file serving
-  ├── Socket.IO
-  │     ├── chat:send           → agent loop → tool calls → response
-  │     └── project:chat:send   → project-aware agent loop
-  └── Vite middleware (dev) / static dist (prod)
-        └── React SPA
-```
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start dev server with hot reload (Vite embedded) |
+| `npm run build` | Build React client to `client/dist/` |
+| `npm start` | Build frontend + start production server |
 
 ---
 
