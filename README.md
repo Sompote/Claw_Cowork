@@ -174,62 +174,55 @@ npm --version
 
 ---
 
-### 5. Clone the repository
+### 5. Clone and start with one command
 
 ```bash
 cd /root
 git clone https://github.com/Sompote/claw_cowork.git
 cd claw_cowork
+bash setup.sh
 ```
 
----
+`setup.sh` installs all dependencies (server + client) and starts the app automatically on port 3001. Open **http://localhost:3001** in your browser.
 
-### 6. Install dependencies
+<details>
+<summary>Manual steps (if you prefer to run each step yourself)</summary>
 
+**Install server dependencies:**
 ```bash
-# Install server dependencies
 npm install
-
-# Install frontend dependencies
-cd client && npm install && cd ..
 ```
 
----
+**Install client dependencies:**
+```bash
+npm install --prefix client
+```
 
-### 7. Set up access token (strongly recommended)
-
+**Set up access token (strongly recommended):**
 ```bash
 cp .env.example .env
 nano .env
 ```
-
-Set your token:
 ```env
 ACCESS_TOKEN=your-secret-token-here
 PORT=3001
 ```
-
 If you skip this, the app runs with no authentication — anyone who can reach the port can use it.
 
----
-
-### 8. Run the app
-
-**Development mode** (hot reload, Vite embedded):
+**Run the app:**
 ```bash
+# Development mode (hot reload)
 npm run dev
-```
 
-Open **http://localhost:3001** in your browser.
-
-**Production mode** (builds frontend then starts server):
-```bash
+# Production mode (build then serve)
 npm start
 ```
 
+</details>
+
 ---
 
-### 9. Add your API key
+### 6. Add your API key
 
 Go to **Settings** and enter:
 - **API Key** — Your OpenRouter key (`sk-or-v1-...`) or any OpenAI-compatible key
@@ -240,7 +233,7 @@ Click **Test Connection** to verify, then **Save changes**.
 
 ---
 
-### 10. Reconnect to the container later
+### 7. Reconnect to the container later
 
 If you close your terminal, the container stops. To resume:
 ```bash

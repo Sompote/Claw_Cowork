@@ -6,7 +6,8 @@
     "dev": "tsx watch server/index.ts",
     "build": "cd client && npx vite build",
     "postinstall": "npm i -g clawhub",
-    "start": "npm run build && NODE_ENV=production tsx server/index.ts"
+    "start": "npm run build && NODE_ENV=production tsx server/index.ts",
+    "setup": "npm install && npm install --prefix client && npm run dev"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.27.1",
