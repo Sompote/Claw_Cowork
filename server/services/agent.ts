@@ -126,6 +126,11 @@ export function buildSystemPrompt(params: SystemPromptParams = {}): string {
 
   if (!isMinimal) {
     sections.push(
+      `**CRITICAL: Tool Call Format**`,
+      `You MUST invoke tools using ONLY the API's built-in tool_calls mechanism.`,
+      `NEVER write tool calls as text in your response (no [TOOL_CALL], no <invoke>, no <minimax:tool_call>, no JSON in text).`,
+      `If you want to call a tool, call it silently via the API — do NOT mention the syntax in your reply.`,
+      ``,
       `Available tools:`,
       `- **web_search**: Search the internet (DuckDuckGo, Google, Wikipedia)`,
       `- **openrouter_web_search**: AI-summarized web search via OpenRouter (best for research)`,
@@ -133,7 +138,8 @@ export function buildSystemPrompt(params: SystemPromptParams = {}): string {
       `- **run_python**: Execute Python in the sandbox. Working dir is \`output_file/\`. Use \`PROJECT_DIR\` variable for project files`,
       `- **run_react**: Compile and render a React/JSX component in the output panel. Recharts available as global`,
       `- **run_shell**: Execute shell commands (install packages, git, system ops)`,
-      `- **read_file**: Read a file from disk`,
+      `- **read_file**: Read a text file from disk`,
+      `- **read_pdf**: Extract text from a PDF file (use this for any uploaded .pdf file)`,
       `- **write_file**: Write or append to a file`,
       `- **list_files**: List directory contents`,
       `- **list_skills**: List all installed ClawHub skills`,
@@ -160,9 +166,10 @@ export function buildSystemPrompt(params: SystemPromptParams = {}): string {
       `- For complex multi-step tasks, use **spawn_subagent** to delegate sub-tasks with clear inputs/outputs.`,
       `- For web research, prefer openrouter_web_search (richer results). Fall back to web_search if unavailable.`,
       `- For interactive UIs, dashboards, or charts — use run_react with Recharts. For data/Python charts — use run_python with matplotlib.`,
-      `- CHARTS: Always call plt.savefig('filename.png', dpi=150, bbox_inches='tight'). Never call plt.show().`,
+      `- CHARTS: Always call plt.savefig('chart.png', dpi=150, bbox_inches='tight'). Never call plt.show(). Use only the filename — NO path prefix.`,
+      `- OUTPUT: Python's working dir is already output_file/. Save files with just the filename (e.g. 'report.pdf', 'chart.png'). NEVER prefix paths with 'output_file/' — that creates a wrong nested path.`,
+      `- PDF files: When the user uploads a PDF, use read_pdf to extract its text. Never use read_file for PDFs.`,
       `- WORD files: Use python-docx via run_python. Never use write_file for binary formats.`,
-      `- OUTPUT: Python working dir is output_file/ inside sandbox. All output files are saved there.`,
       `- REACT: Do NOT use import/export in run_react — React, hooks, and Recharts are globals.`,
       `- MCP tools: Use \`mcp_{server}_{tool}\` when they match the user's request.`,
       ``
@@ -209,6 +216,128 @@ export function buildSystemPrompt(params: SystemPromptParams = {}): string {
   }
 
   return sections.join("\n");
+}
+
+// ─── Content-embedded tool call parser ───────────────────────────────────────
+// MiniMax and some other models output tool calls as text in content instead
+// of using the standard tool_calls API field. This parser handles all known
+// formats and strips them from the displayed content.
+
+function parseArrowHash(body: string): Record<string, string> {
+  // Parses: { tool => "name", args => { --key "value" ... } }
+  // and also: key => "value" pairs
+  const args: Record<string, string> = {};
+  // --key "value" style
+  const flagRe = /--(\w+)\s+"([^"]*)"/g;
+  let m;
+  while ((m = flagRe.exec(body)) !== null) args[m[1]] = m[2];
+  // key => "value" style (skip "tool" and "args" meta-keys)
+  const pairRe = /\b(\w+)\s*=>\s*"([^"]*)"/g;
+  while ((m = pairRe.exec(body)) !== null) {
+    if (m[1] !== "tool" && m[1] !== "args") args[m[1]] = m[2];
+  }
+  return args;
+}
+
+function pushTC(toolCalls: any[], name: string, args: Record<string, any>) {
+  toolCalls.push({
+    id: `content_tc_${toolCalls.length}`,
+    type: "function",
+    function: { name, arguments: JSON.stringify(args) },
+  });
+}
+
+function extractContentToolCalls(content: string): {
+  toolCalls: any[];
+  cleanContent: string;
+} {
+  const toolCalls: any[] = [];
+  let clean = content;
+
+  // Format A: [TOOL_CALL]...[/TOOL_CALL] — handles multiple inner styles
+  clean = clean.replace(/\[TOOL_CALL\]([\s\S]*?)\[\/TOOL_CALL\]/g, (_m, body) => {
+    // A1: <invoke name="TOOL"><parameter name="k">v</parameter></invoke>  (with closing tags)
+    const invokeM = body.match(/<invoke\s+name="(\w+)">([\s\S]*?)(?:<\/invoke>|$)/);
+    if (invokeM) {
+      const name = invokeM[1];
+      const inner = invokeM[2];
+      const args: Record<string, string> = {};
+      // Try closed <parameter> tags first
+      const closedParam = /<parameter\s+name="(\w+)">([\s\S]*?)<\/parameter>/g;
+      let pm; let found = false;
+      while ((pm = closedParam.exec(inner)) !== null) {
+        args[pm[1]] = pm[2].trim().replace(/["}\n\r]+$/, "");
+        found = true;
+      }
+      // Fallback: unclosed <parameter name="k">value (no closing tag)
+      if (!found) {
+        const openParam = /<parameter\s+name="(\w+)">([\s\S]*?)(?=<parameter|$)/g;
+        while ((pm = openParam.exec(inner)) !== null) {
+          args[pm[1]] = pm[2].trim().replace(/["}\n\r]+$/, "");
+        }
+      }
+      if (Object.keys(args).length) pushTC(toolCalls, name, args);
+      return "";
+    }
+    // A2: {tool => "name", args => { --key "val" }} style
+    const nameM = body.match(/tool\s*=>\s*"(\w+)"/);
+    if (nameM) pushTC(toolCalls, nameM[1], parseArrowHash(body));
+    return "";
+  });
+
+  // Format B: <minimax:tool_call><invoke name="TOOL"><parameter name="k">v</parameter></invoke></minimax:tool_call>
+  clean = clean.replace(/<minimax:tool_call>\s*<invoke\s+name="(\w+)">([\s\S]*?)<\/invoke>\s*<\/minimax:tool_call>/g, (_m, name, body) => {
+    const args: Record<string, string> = {};
+    const paramRe = /<parameter\s+name="(\w+)">([\s\S]*?)<\/parameter>/g;
+    let pm;
+    while ((pm = paramRe.exec(body)) !== null) args[pm[1]] = pm[2].trim();
+    pushTC(toolCalls, name, args);
+    return "";
+  });
+
+  // Format C: <minimax:tool_call>TOOLNAME{"key":"val"}</minimax:tool_call>
+  clean = clean.replace(/<minimax:tool_call>([\s\S]*?)<\/minimax:tool_call>/g, (_m, inner) => {
+    const m = inner.trim().match(/^(\w+)\s*(\{[\s\S]*\})/);
+    if (m) { try { pushTC(toolCalls, m[1], JSON.parse(m[2])); } catch {} }
+    return "";
+  });
+
+  // Format D: [minimax:tool_call TOOLNAME{"key":"val"}]}
+  clean = clean.replace(/\[minimax:tool_call\s+(\w+)\s*(\{[\s\S]*?\})\s*\][\s}]*/g, (_m, name, argsStr) => {
+    try { pushTC(toolCalls, name, JSON.parse(argsStr)); } catch {}
+    return "";
+  });
+
+  // Format E: <tool_call>{"name":"...","arguments":{...}}</tool_call>
+  clean = clean.replace(/<tool_call>([\s\S]*?)<\/tool_call>/g, (_m, inner) => {
+    try {
+      const obj = JSON.parse(inner.trim());
+      if (obj.name) pushTC(toolCalls, obj.name, obj.arguments || obj.args || {});
+    } catch {}
+    return "";
+  });
+
+  // Format F: generic JSON tool call {"name":"...","parameters":{...}} anywhere in content
+  clean = clean.replace(/\{"name"\s*:\s*"(\w+)"\s*,\s*"(?:arguments|parameters|args)"\s*:\s*(\{[\s\S]*?\})\}/g, (_m, name, argsStr) => {
+    try { pushTC(toolCalls, name, JSON.parse(argsStr)); } catch {}
+    return "";
+  });
+
+  if (toolCalls.length === 0 && content.length > 0) {
+    console.log(`[extractContentToolCalls] No match. Raw content: ${JSON.stringify(content.slice(0, 500))}`);
+  }
+
+  return { toolCalls, cleanContent: clean.trim() };
+}
+
+// Strip any leaked tool call markers from final response content
+function stripToolCallMarkers(content: string): string {
+  return content
+    .replace(/\[TOOL_CALL\][\s\S]*?\[\/TOOL_CALL\]/g, "")
+    .replace(/<minimax:tool_call>[\s\S]*?<\/minimax:tool_call>/g, "")
+    .replace(/<tool_call>[\s\S]*?<\/tool_call>/g, "")
+    .replace(/\[minimax:tool_call[\s\S]*?\]/g, "")
+    .trim();
 }
 
 // ─── Agent Loop ───────────────────────────────────────────────────────────────
@@ -267,8 +396,18 @@ export async function runAgentLoop(
     }
 
     const message = choice.message;
-    const toolCalls = message.tool_calls || [];
+    let toolCalls = message.tool_calls || [];
     lastUsage = data.usage;
+
+    // MiniMax (and some other models) embed tool calls as text in content
+    // instead of using the proper tool_calls field. Parse and extract them.
+    if (!toolCalls.length && message.content) {
+      const extracted = extractContentToolCalls(message.content);
+      if (extracted.toolCalls.length) {
+        toolCalls = extracted.toolCalls;
+        message.content = extracted.cleanContent;
+      }
+    }
 
     // Truncate large tool_call args to prevent context overflow
     const truncatedToolCalls = toolCalls.length
@@ -288,7 +427,7 @@ export async function runAgentLoop(
     });
 
     if (!toolCalls.length) {
-      earlyContent = message.content || "No response generated.";
+      earlyContent = stripToolCallMarkers(message.content || "No response generated.");
       break;
     }
 
@@ -526,7 +665,9 @@ Scoring: 1.0=fully satisfied, 0.7-0.9=minor gaps, 0.4-0.6=significant gaps, 0.0-
     }
   }
 
-  if (earlyContent && !reflectionEnabled) {
+  // If we already have a good final answer from the agent, return it directly.
+  // Skip the extra final-summary LLM call — it adds latency without value.
+  if (earlyContent) {
     return { content: earlyContent, usage: lastUsage, toolResults };
   }
 
@@ -618,7 +759,7 @@ Scoring: 1.0=fully satisfied, 0.7-0.9=minor gaps, 0.4-0.6=significant gaps, 0.0-
 
   try {
     const data = await llmCall(finalMessages);
-    const content = data.choices?.[0]?.message?.content || "";
+    const content = stripToolCallMarkers(data.choices?.[0]?.message?.content || "");
     if (content) return { content, usage: data.usage, toolResults };
   } catch (err: any) {
     console.error("[FinalResponse] Failed:", err.message);

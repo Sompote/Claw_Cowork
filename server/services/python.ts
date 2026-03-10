@@ -63,28 +63,32 @@ ${code}
       // Clean up temp script
       try { fs.unlinkSync(scriptPath); } catch {}
 
-      // Detect newly created files in output_file/ subfolder
+      // Detect newly created files in output_file/ subfolder (recursive)
       const outputFiles: string[] = [];
-      const outputExts = [".pdf", ".docx", ".doc", ".xlsx", ".csv", ".png", ".jpg", ".jpeg", ".svg", ".html", ".gif", ".webp"];
-      const scanDirs = [path.join(sandboxDir, "output_file")];
-      try {
-        for (const dir of scanDirs) {
-          if (!fs.existsSync(dir)) continue;
-          const files = fs.readdirSync(dir);
-          for (const f of files) {
-            const ext = path.extname(f).toLowerCase();
-            if (outputExts.includes(ext)) {
-              const fullPath = path.join(dir, f);
-              const stat = fs.statSync(fullPath);
-              if (Date.now() - stat.mtimeMs < 30000) {
-                // Store relative path from sandboxDir
-                const relPath = path.relative(sandboxDir, fullPath);
-                outputFiles.push(relPath);
+      const outputExts = new Set([".pdf", ".docx", ".doc", ".xlsx", ".csv", ".png", ".jpg", ".jpeg", ".svg", ".html", ".gif", ".webp"]);
+      const now = Date.now();
+      function scanDir(dir: string) {
+        if (!fs.existsSync(dir)) return;
+        try {
+          for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const fullPath = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+              scanDir(fullPath);
+            } else {
+              const ext = path.extname(entry.name).toLowerCase();
+              if (outputExts.has(ext)) {
+                try {
+                  const stat = fs.statSync(fullPath);
+                  if (now - stat.mtimeMs < 60000) {
+                    outputFiles.push(path.relative(sandboxDir, fullPath));
+                  }
+                } catch {}
               }
             }
           }
-        }
-      } catch {}
+        } catch {}
+      }
+      scanDir(path.join(sandboxDir, "output_file"));
 
       resolve({ stdout, stderr, exitCode: exitCode ?? 1, outputFiles });
     });

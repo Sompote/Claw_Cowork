@@ -88,7 +88,7 @@ const builtinTools = [
     type: "function" as const,
     function: {
       name: "run_python",
-      description: "Execute Python code in the sandbox. Working dir is output_file/. Use PROJECT_DIR variable to access project files. Returns stdout, stderr, and output files.",
+      description: "Execute Python code in the sandbox. Working dir is already output_file/ — save files with just the filename (e.g. 'report.pdf'), never prefix with 'output_file/'. Use PROJECT_DIR to access uploaded/project files. Returns stdout, stderr, and output files.",
       parameters: {
         type: "object",
         properties: { code: { type: "string", description: "Python code to execute" } },
@@ -135,6 +135,18 @@ const builtinTools = [
       parameters: {
         type: "object",
         properties: { path: { type: "string", description: "File path to read" } },
+        required: ["path"],
+      },
+    },
+  },
+  {
+    type: "function" as const,
+    function: {
+      name: "read_pdf",
+      description: "Extract text content from a PDF file. Use this when the user uploads a PDF or asks you to analyze a PDF document. Returns the text content and page count.",
+      parameters: {
+        type: "object",
+        properties: { path: { type: "string", description: "Path to the PDF file (absolute or relative to sandbox/uploads/)" } },
         required: ["path"],
       },
     },
@@ -495,6 +507,29 @@ function readFileTool(args: { path?: string; file?: string; filepath?: string })
   return { ok: true, path: target, content: content.slice(0, 30000), truncated: content.length > 30000 };
 }
 
+async function readPdfTool(args: { path?: string; file?: string; filepath?: string }): Promise<any> {
+  const filePath = args.path || args.file || args.filepath;
+  if (!filePath) return { ok: false, error: "No path provided" };
+  const settings = getSettings();
+  const sandboxDir = settings.sandboxDir || path.resolve("sandbox");
+  // Try absolute, then relative to sandbox
+  let target = path.resolve(filePath);
+  if (!fs.existsSync(target)) {
+    target = path.join(sandboxDir, filePath);
+  }
+  if (!fs.existsSync(target)) return { ok: false, error: "File not found: " + filePath };
+  try {
+    // @ts-ignore
+    const pdfParse = (await import("pdf-parse")).default;
+    const buffer = fs.readFileSync(target);
+    const data = await pdfParse(buffer);
+    const text = data.text || "";
+    return { ok: true, text: text.slice(0, 30000), pages: data.numpages, truncated: text.length > 30000 };
+  } catch (err: any) {
+    return { ok: false, error: err.message };
+  }
+}
+
 function writeFileTool(args: { path: string; content: string; append?: boolean }): any {
   const settings = getSettings();
   const sandboxDir = settings.sandboxDir || path.resolve("sandbox");
@@ -718,6 +753,7 @@ export async function callTool(name: string, args: any, subagentDepth = 0): Prom
     case "run_react": return runReactTool(args);
     case "run_shell": return runShell(args);
     case "read_file": return readFileTool(args);
+    case "read_pdf": return readPdfTool(args);
     case "write_file": return writeFileTool(args);
     case "list_files": return listFilesTool(args);
     case "list_skills": return listSkillsTool();

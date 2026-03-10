@@ -1,1 +1,74 @@
-[]
+[
+  {
+    "id": "0e44c685-082b-4dd6-b4e8-441f63994850",
+    "name": "Web Search",
+    "description": "Search the web using configured search engine",
+    "source": "claude",
+    "script": "web-search",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:21.785Z"
+  },
+  {
+    "id": "7ba46161-6e0a-4c85-a698-e0e6ee7337e0",
+    "name": "Code Review",
+    "description": "Review code for quality and security issues",
+    "source": "claude",
+    "script": "code-review",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:24.199Z"
+  },
+  {
+    "id": "2454d2ca-232f-4a3f-9972-3b158790a173",
+    "name": "File Converter",
+    "description": "Convert between file formats (PDF, DOCX, CSV)",
+    "source": "claude",
+    "script": "file-converter",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:24.931Z"
+  },
+  {
+    "id": "a4f5396c-07be-4305-9316-ead80f7ea924",
+    "name": "Data Analyzer",
+    "description": "Analyze CSV/JSON data and generate charts",
+    "source": "openclaw",
+    "script": "data-analyzer",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:25.631Z"
+  },
+  {
+    "id": "1ad7d42d-8ffc-440a-8064-e670960f841c",
+    "name": "API Tester",
+    "description": "Test REST APIs with custom requests",
+    "source": "openclaw",
+    "script": "api-tester",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:26.687Z"
+  },
+  {
+    "id": "6f05ea3f-3e6b-47c0-9380-7d60f6d478d5",
+    "name": "Markdown Renderer",
+    "description": "Render markdown to HTML/PDF",
+    "source": "openclaw",
+    "script": "markdown-renderer",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:27.349Z"
+  },
+  {
+    "id": "a75da71c-4fad-4b6f-8b2e-90372785c01b",
+    "name": "Git Helper",
+    "description": "Git operations within sandbox",
+    "source": "claude",
+    "script": "git-helper",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:28.444Z"
+  },
+  {
+    "id": "eaacb480-46b2-4fa5-9c32-992686d5dbd4",
+    "name": "Image Processor",
+    "description": "Resize, crop, and convert images",
+    "source": "openclaw",
+    "script": "image-processor",
+    "enabled": true,
+    "installedAt": "2026-03-10T21:00:29.066Z"
+  }
+]

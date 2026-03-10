@@ -51,6 +51,48 @@ function getFileExt(name: string): string {
   return (name.split(".").pop() || "").toLowerCase();
 }
 
+function isImageFile(name: string): boolean {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  return ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
+}
+
+function AttachmentItem({ f }: { f: AttachedFile }) {
+  const [expanded, setExpanded] = useState(false);
+  const isPdf = f.name.toLowerCase().endsWith(".pdf");
+  const isDoc = /\.(doc|docx)$/i.test(f.name);
+  const canPreview = isPdf || isDoc;
+
+  return (
+    <div className={`attachment-item ${canPreview ? "previewable" : ""}`}>
+      <div className="attachment-item-header">
+        {isImageFile(f.name) ? (
+          <img src={`/sandbox/${f.path}`} alt={f.name} className="attachment-image-preview" />
+        ) : (
+          <div className="attachment-icon">{getFileIcon(f.name)}</div>
+        )}
+        <div className="attachment-info">
+          <span className="attachment-name">{f.name}</span>
+          <span className="attachment-size">{formatFileSize(f.size)}</span>
+        </div>
+        {canPreview && (
+          <button
+            className="attachment-preview-toggle"
+            onClick={() => setExpanded((v) => !v)}
+            title={expanded ? "Hide preview" : "Show preview"}
+          >
+            {expanded ? "▲" : "▼"}
+          </button>
+        )}
+      </div>
+      {expanded && canPreview && (
+        <div className="attachment-doc-preview">
+          <DocPreview file={f.path} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DocPreview({ file }: { file: string }) {
   const [html, setHtml] = useState<string>("");
   const [info, setInfo] = useState<string>("");
@@ -152,14 +194,14 @@ function OutputCanvas({ files }: { files: string[] }) {
         </div>
       ))}
 
-      {/* PDF preview with extracted text */}
+      {/* PDF inline viewer */}
       {pdfFiles.map((f) => (
-        <div key={f} className="canvas-doc-wrap">
-          <div className="canvas-doc-header">
+        <div key={f} className="canvas-html-wrap">
+          <div className="canvas-html-header">
             <div className="canvas-doc-icon pdf">PDF</div>
             <span>{f.split("/").pop()}</span>
             <div style={{ display: "flex", gap: 6 }}>
-              <a href={`/sandbox/${f}`} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open">
+              <a href={`/sandbox/${f}`} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open in new tab">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
               </a>
               <a href={api.downloadUrl(f)} download className="canvas-dl-btn" title="Download">
@@ -167,7 +209,11 @@ function OutputCanvas({ files }: { files: string[] }) {
               </a>
             </div>
           </div>
-          <DocPreview file={f} />
+          <iframe
+            src={`/sandbox/${f}?t=${Date.now()}`}
+            className="canvas-pdf-iframe"
+            title={f}
+          />
         </div>
       ))}
 
@@ -406,11 +452,6 @@ export default function ChatPage() {
     }
   };
 
-  const isImageFile = (name: string) => {
-    const ext = name.split(".").pop()?.toLowerCase() || "";
-    return ["png", "jpg", "jpeg", "gif", "webp", "svg", "bmp"].includes(ext);
-  };
-
   return (
     <div className="chat-page">
       <div className={`chat-sidebar-backdrop ${mobileSidebar ? "visible" : ""}`} onClick={() => setMobileSidebar(false)} />
@@ -464,17 +505,7 @@ export default function ChatPage() {
                       {msg.attachments && msg.attachments.length > 0 && (
                         <div className="message-attachments">
                           {msg.attachments.map((f, j) => (
-                            <div key={j} className="attachment-item">
-                              {isImageFile(f.name) ? (
-                                <img src={`/sandbox/${f.path}`} alt={f.name} className="attachment-image-preview" />
-                              ) : (
-                                <div className="attachment-icon">{getFileIcon(f.name)}</div>
-                              )}
-                              <div className="attachment-info">
-                                <span className="attachment-name">{f.name}</span>
-                                <span className="attachment-size">{formatFileSize(f.size)}</span>
-                              </div>
-                            </div>
+                            <AttachmentItem key={j} f={f} />
                           ))}
                         </div>
                       )}

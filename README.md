@@ -1,8 +1,43 @@
 # Claw Cowork
 
+**Version 0.0.2**
+
 ![Claw Cowork Screenshot](picture/scree_claw.png)
 
 A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork** with the advanced agent architecture of **OpenClaw** — served on a single port.
+
+---
+
+## Changelog
+
+### v0.0.2 — 2026-03-10
+
+#### New Features
+- **PDF reading for the agent** — New `read_pdf` tool lets the agent extract and analyze text from uploaded PDF files. The agent now automatically uses `read_pdf` instead of `read_file` when working with `.pdf` attachments.
+- **PDF/DOCX preview in chat attachments** — User-uploaded PDF and Word documents now show an inline expandable text preview directly in the chat message (click the ▼ button to expand).
+
+#### Bug Fixes
+- **Output panel: generated PDFs now appear correctly** — Fixed a path bug where agent-generated PDF files (and other outputs) were saved to a double-nested `output_file/output_file/` directory and missed by the file scanner. Files now correctly appear in the right-side output panel.
+- **File scanner is now recursive** — The output file scanner in the Python runner now walks all subdirectories under `output_file/`, so files saved at any depth are detected and shown in the output panel. Detection window extended from 30s to 60s to support slower PDF generation jobs.
+- **System prompt path guidance fixed** — Agent instructions now explicitly warn against prefixing save paths with `output_file/` (the Python working directory is already set there), preventing the double-path issue.
+
+#### Internal Changes
+- `server/services/python.ts` — Recursive `scanDir()` replaces flat `readdirSync` for output file detection.
+- `server/services/toolbox.ts` — Added `read_pdf` tool definition and implementation using `pdf-parse`.
+- `server/services/agent.ts` — Updated system prompt: added `read_pdf` to tool list and OUTPUT/CHARTS path rules.
+- `client/src/pages/ChatPage.tsx` — Added `AttachmentItem` component with expandable PDF/DOCX preview; hoisted `isImageFile` to module scope.
+- `client/src/pages/ChatPage.css` — New styles for expandable attachment preview (`.attachment-item-header`, `.attachment-preview-toggle`, `.attachment-doc-preview`).
+
+---
+
+### v0.0.1 — Initial Release
+
+- Initial release combining Tiger Cowork frontend with OpenClaw agent backend.
+- Single-port Express + Vite setup.
+- Agent tools: `web_search`, `fetch_url`, `run_python`, `run_react`, `run_shell`, `read_file`, `write_file`, `list_files`, `list_skills`, `load_skill`, `clawhub_search`, `clawhub_install`, `spawn_subagent`, MCP tools.
+- Projects, Files, Tasks, Skills, Settings pages.
+- Reflection loop, subagent spawning (max depth 3), tool access policy per project folder.
+- Docker setup guide and PM2 support.
 
 ---
 
@@ -431,7 +466,7 @@ You are Claw Cowork, an advanced agentic AI workspace...
 
 ## Tooling
 Available tools: web_search, fetch_url, run_python, run_react,
-run_shell, read_file, write_file, list_files, list_skills,
+run_shell, read_file, read_pdf, write_file, list_files, list_skills,
 load_skill, clawhub_search, clawhub_install, spawn_subagent, mcp_*
 
 ### Tool Rules
@@ -513,7 +548,8 @@ Main Agent (depth 0)
 | `run_python` | Execute Python in sandbox (`output_file/` working dir) |
 | `run_react` | Compile and render JSX/React in output panel (Recharts included) |
 | `run_shell` | Execute shell commands (respects project folder access policy) |
-| `read_file` | Read a file from disk |
+| `read_file` | Read a text file from disk |
+| `read_pdf` | Extract text content from a PDF file |
 | `write_file` | Write or append to a file |
 | `list_files` | List directory contents |
 | `list_skills` | List installed ClawHub skills |
