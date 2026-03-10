@@ -1,5 +1,7 @@
 # Claw Cowork
 
+![Claw Cowork Screenshot](picture/scree_claw.png)
+
 A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork** with the advanced agent architecture of **OpenClaw** — served on a single port.
 
 ---
