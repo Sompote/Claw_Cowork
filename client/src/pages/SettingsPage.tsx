@@ -1,6 +1,17 @@
 import { useState, useEffect } from "react";
-import { api } from "../utils/api";
+import { api, setAccessToken } from "../utils/api";
 import "./PageStyles.css";
+
+function formatRelativeTime(isoString: string): string {
+  const diff = Date.now() - new Date(isoString).getTime();
+  const minutes = Math.floor(diff / 60000);
+  const hours = Math.floor(diff / 3600000);
+  const days = Math.floor(diff / 86400000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} minute${minutes !== 1 ? "s" : ""} ago`;
+  if (hours < 24) return `${hours} hour${hours !== 1 ? "s" : ""} ago`;
+  return `${days} day${days !== 1 ? "s" : ""} ago`;
+}
 
 interface McpStatus {
   name: string;
@@ -29,12 +40,41 @@ export default function SettingsPage() {
   const [telegramDetecting, setTelegramDetecting] = useState(false);
   const [telegramMessage, setTelegramMessage] = useState<{ text: string; ok: boolean } | null>(null);
   const [telegramTestMsg, setTelegramTestMsg] = useState("");
+  const [tokenInfo, setTokenInfo] = useState<any>(null);
+  const [tokenInfoError, setTokenInfoError] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [newRotatedToken, setNewRotatedToken] = useState<string | null>(null);
+  const [rotating, setRotating] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     api.getSettings().then(setSettings);
     api.mcpStatus().then(setMcpStatuses).catch(() => {});
     api.telegramStatus().then(setTelegramStatus).catch(() => {});
+    api.getTokenInfo().then(setTokenInfo).catch(() => setTokenInfoError(true));
   }, []);
+
+  const handleRotateToken = async () => {
+    setRotating(true);
+    setNewRotatedToken(null);
+    try {
+      const result = await api.rotateToken();
+      if (result.ok) {
+        setNewRotatedToken(result.token);
+        setAccessToken(result.token);
+        api.getTokenInfo().then(setTokenInfo).catch(() => setTokenInfoError(true));
+      }
+    } catch {
+      // ignore
+    }
+    setRotating(false);
+  };
+
+  const copyToken = async (token: string) => {
+    await navigator.clipboard.writeText(token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const save = async () => {
     await api.saveSettings(settings);
@@ -170,6 +210,87 @@ export default function SettingsPage() {
       </div>
 
       <div className="settings-grid">
+        <section className="card">
+          <h3>Access Security</h3>
+          <p className="hint" style={{ marginBottom: 12 }}>
+            Rotate the access token to invalidate old sessions. A 1-hour grace period lets active users finish their work before the old token expires.
+          </p>
+
+          {/* Token info — shown when loaded */}
+          {tokenInfo && tokenInfo.hasToken && (
+            <div className="form-group">
+              <label>Current Token</label>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <code style={{
+                  flex: 1, padding: "6px 10px", background: "var(--bg-secondary, #f5f5f5)",
+                  borderRadius: 6, fontSize: 13, wordBreak: "break-all", border: "1px solid var(--border)",
+                }}>
+                  {newRotatedToken || tokenInfo.tokenPreview || "••••••••..."}
+                </code>
+                <button className="btn btn-secondary btn-sm" onClick={async () => {
+                  const result = await api.getFullToken();
+                  if (result.token) {
+                    await navigator.clipboard.writeText(result.token);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 2000);
+                  }
+                }}>
+                  {copied ? "Copied!" : "Copy Token"}
+                </button>
+              </div>
+              <p className="hint" style={{ marginTop: 4 }}>
+                {tokenInfo.rotatedAt
+                  ? `Last rotated: ${formatRelativeTime(tokenInfo.rotatedAt)}`
+                  : tokenInfo.createdAt
+                    ? `Created: ${formatRelativeTime(tokenInfo.createdAt)}`
+                    : "Token active"}
+                {" · Use this token to log in from other browsers"}
+              </p>
+            </div>
+          )}
+
+          {/* Grace period notice */}
+          {tokenInfo?.gracePeriodActive && (
+            <div style={{
+              padding: "8px 12px", borderRadius: 6, marginBottom: 12,
+              background: "#fff3e0", border: "1px solid #ffb74d", fontSize: 13, color: "#e65100",
+            }}>
+              Old token still valid for {tokenInfo.graceExpiresInMin} more minute{tokenInfo.graceExpiresInMin !== 1 ? "s" : ""} (grace period active)
+            </div>
+          )}
+
+          {/* New token banner after rotation */}
+          {newRotatedToken && (
+            <div style={{
+              padding: "12px 14px", borderRadius: 8, marginBottom: 14,
+              background: "#e6f4ea", border: "1px solid #81c995",
+            }}>
+              <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 6, color: "#137333" }}>
+                New token — copy and save it now
+              </div>
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <code style={{
+                  flex: 1, fontSize: 12, wordBreak: "break-all",
+                  background: "rgba(0,0,0,0.05)", padding: "4px 8px", borderRadius: 4,
+                }}>
+                  {newRotatedToken}
+                </code>
+                <button className="btn btn-secondary btn-sm" onClick={() => copyToken(newRotatedToken)}>
+                  {copied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p style={{ fontSize: 12, margin: "6px 0 0", color: "#137333" }}>
+                Your session has been updated. Old token expires in 1 hour.
+              </p>
+            </div>
+          )}
+
+          {/* Always-visible rotate button */}
+          <button className="btn btn-secondary" onClick={handleRotateToken} disabled={rotating}>
+            {rotating ? "Rotating..." : "Rotate Token"}
+          </button>
+        </section>
+
         <section className="card">
           <h3>AI Backend</h3>
           <p className="hint" style={{ marginBottom: 12 }}>

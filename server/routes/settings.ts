@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { getSettings, saveSettings } from "../services/data";
 import { connectServer, disconnectServer, getMcpStatus, initMcpServers } from "../services/mcp";
+import { rotateToken as doRotate } from "../services/tokenState";
 
 export const settingsRouter = Router();
 
@@ -107,4 +108,49 @@ settingsRouter.post("/mcp/disconnect", async (req, res) => {
 settingsRouter.post("/mcp/reconnect-all", async (_req, res) => {
   await initMcpServers();
   res.json({ ok: true, status: getMcpStatus() });
+});
+
+// Token info (masked)
+settingsRouter.get("/token-info", (_req, res) => {
+  const settings = getSettings();
+  const envToken = process.env.ACCESS_TOKEN || "";
+  const activeToken = settings.accessToken || envToken;
+  const GRACE_MS = 60 * 60 * 1000;
+
+  let gracePeriodActive = false;
+  let graceExpiresInMin: number | null = null;
+  if (settings.accessTokenRotatedAt) {
+    const ageMs = Date.now() - new Date(settings.accessTokenRotatedAt).getTime();
+    if (ageMs < GRACE_MS) {
+      gracePeriodActive = true;
+      graceExpiresInMin = Math.ceil((GRACE_MS - ageMs) / 60000);
+    }
+  }
+
+  res.json({
+    hasToken: !!activeToken,
+    source: settings.accessToken ? "settings" : envToken ? "env" : "none",
+    tokenPreview: activeToken ? activeToken.slice(0, 8) + "..." : null,
+    createdAt: settings.accessTokenCreatedAt || null,
+    rotatedAt: settings.accessTokenRotatedAt || null,
+    gracePeriodActive,
+    graceExpiresInMin,
+  });
+});
+
+// Return full token (authenticated)
+settingsRouter.get("/full-token", (_req, res) => {
+  const settings = getSettings();
+  const token = settings.accessToken || process.env.ACCESS_TOKEN || "";
+  res.json({ token });
+});
+
+// Rotate token
+settingsRouter.post("/rotate-token", (_req, res) => {
+  const settings = getSettings();
+  if (process.env.ACCESS_TOKEN && !settings.accessToken) {
+    return res.status(400).json({ error: "Token is set via environment variable — change ACCESS_TOKEN env var to rotate." });
+  }
+  const newToken = doRotate();
+  res.json({ ok: true, token: newToken });
 });

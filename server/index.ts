@@ -18,10 +18,9 @@ import { projectsRouter } from "./routes/projects";
 import { telegramRouter } from "./routes/telegram";
 import { setupSocket } from "./services/socket";
 import { initMcpServers } from "./services/mcp";
+import { initToken, isValidToken, hasTokenRequired } from "./services/tokenState";
 
 dotenv.config();
-
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN || "";
 
 const app = express();
 const server = createServer(app);
@@ -74,20 +73,31 @@ app.use(express.json({ limit: "50mb" }));
 app.locals.sandboxDir = SANDBOX_DIR;
 app.locals.dataDir = DATA_DIR;
 
+// Init token (auto-generate if none set)
+initToken();
+
+// Public token hint — returns full token for login screen (self-hosted, private port)
+app.get("/api/auth/token-hint", (_req, res) => {
+  const { getSettings } = require("./services/data");
+  const settings = getSettings();
+  const token = settings.accessToken || process.env.ACCESS_TOKEN || "";
+  res.json({ token: token || null });
+});
+
 // Auth verify endpoint (no auth required)
 app.post("/api/auth/verify", (req, res) => {
-  if (!ACCESS_TOKEN) return res.json({ ok: true, required: false });
+  if (!hasTokenRequired()) return res.json({ ok: true, required: false });
   const token = req.body.token;
-  if (token === ACCESS_TOKEN) return res.json({ ok: true });
+  if (isValidToken(token)) return res.json({ ok: true });
   return res.status(401).json({ ok: false, error: "Invalid access token" });
 });
 
 // Access token middleware for /api routes
 app.use("/api", (req, res, next) => {
   if (req.path === "/auth/verify") return next();
-  if (!ACCESS_TOKEN) return next();
-  const token = req.headers.authorization?.replace("Bearer ", "") || req.query.token;
-  if (token === ACCESS_TOKEN) return next();
+  if (!hasTokenRequired()) return next();
+  const token = req.headers.authorization?.replace("Bearer ", "") || (req.query.token as string);
+  if (isValidToken(token)) return next();
   return res.status(401).json({ error: "Unauthorized — invalid or missing access token" });
 });
 
@@ -103,17 +113,21 @@ app.use("/api/clawhub", clawhubRouter);
 app.use("/api/projects", projectsRouter);
 app.use("/api/telegram", telegramRouter);
 
-// Serve sandbox files
-app.use("/sandbox", express.static(SANDBOX_DIR));
+// Serve sandbox files (token-protected)
+app.use("/sandbox", (req, res, next) => {
+  if (!hasTokenRequired()) return next();
+  const token = (req.headers.authorization?.replace("Bearer ", "") || req.query.token) as string;
+  if (isValidToken(token)) return next();
+  return res.status(401).send("Unauthorized");
+}, express.static(SANDBOX_DIR));
 
 // Socket.IO auth
-if (ACCESS_TOKEN) {
-  io.use((socket, next) => {
-    const token = socket.handshake.auth?.token;
-    if (token === ACCESS_TOKEN) return next();
-    return next(new Error("Unauthorized — invalid or missing access token"));
-  });
-}
+io.use((socket, next) => {
+  if (!hasTokenRequired()) return next();
+  const token = socket.handshake.auth?.token;
+  if (isValidToken(token)) return next();
+  return next(new Error("Unauthorized — invalid or missing access token"));
+});
 
 setupSocket(io);
 

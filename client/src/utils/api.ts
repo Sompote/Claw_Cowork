@@ -124,6 +124,9 @@ export const api = {
   getSettings: () => request("/settings"),
   saveSettings: (data: any) => request("/settings", { method: "PUT", body: JSON.stringify(data) }),
   testConnection: (data: any) => request("/settings/test-connection", { method: "POST", body: JSON.stringify(data) }),
+  getTokenInfo: () => request("/settings/token-info"),
+  getFullToken: () => request("/settings/full-token"),
+  rotateToken: () => request("/settings/rotate-token", { method: "POST" }),
 
   // Tools
   webSearch: (query: string) => request("/tools/web-search", { method: "POST", body: JSON.stringify({ query }) }),

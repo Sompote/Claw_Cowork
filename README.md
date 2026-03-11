@@ -1,6 +1,6 @@
 # Claw Cowork
 
-**Version 0.1.0**
+**Version 0.1.2**
 
 ![Claw Cowork Screenshot](picture/scree_claw.png)
 
@@ -47,6 +47,44 @@ Set up cron jobs that run agent commands on a schedule — daily reports, monito
 | **Model-agnostic** | Works with OpenRouter, OpenAI, Anthropic, local OpenClaw, or any OpenAI-compatible API |
 | **No lock-in** | All data stored as plain JSON files in `data/` — portable and easy to back up |
 | **Real-time** | Tool call status, streaming responses, and Telegram messages all use Socket.IO |
+
+---
+
+## Access Token Security
+
+Claw Cowork automatically generates a secure access token on first startup and stores it in `data/settings.json`. The token protects all routes — API, file system, and WebSocket connections.
+
+### How it works
+
+- **Auto-generated on first run** — a 64-character random token is created and printed to the server log once
+- **Login screen** — the token is shown directly on the login screen so any user on the network can copy and paste it to log in
+- **Persists across restarts** — the token survives server restarts; it only changes when you rotate it
+- **Single token, all access** — one token controls login, all `/api/*` routes, `/sandbox/*` file serving, and the Socket.IO connection
+
+### Token rotation
+
+In **Settings → Access Security** you can:
+
+- See the current token preview and when it was last rotated
+- Click **Copy Token** to copy the full token to your clipboard (for use in other browsers)
+- Click **Rotate Token** to generate a new token
+
+**Grace period:** after rotation, the old token stays valid for **1 hour** so active users are not immediately locked out.
+
+### Switching browsers or devices
+
+When opening Claw Cowork in a new browser:
+
+1. The login screen shows the full token — copy it and click **Enter**
+2. Or, from a logged-in browser: **Settings → Access Security → Copy Token**, then paste it in the new browser
+
+### Token via environment variable
+
+If you set `ACCESS_TOKEN` in `.env` or `docker-compose.yml`, that value takes priority over the auto-generated token. In that case, rotation from the UI is disabled — change the env var to rotate.
+
+```env
+ACCESS_TOKEN=your-secret-token-here
+```
 
 ---
 
@@ -675,6 +713,30 @@ MIT
 ---
 
 ## Changelog
+
+### v0.1.2 — 2026-03-11 — Security Update
+
+#### New Features
+
+- **Auto-generated access token** — on first startup, a 64-character cryptographically random token is generated automatically and saved to `data/settings.json`. No manual setup required.
+- **Token shown on login screen** — the full token is displayed on the login screen with a **Copy & Fill** button, so any user opening the app in a new browser can log in immediately without checking server logs.
+- **Token rotation with grace period** — **Settings → Access Security** now has a **Rotate Token** button that generates a new token. The old token stays valid for 1 hour after rotation so active sessions are not instantly cut off.
+- **Token age display** — Settings shows when the token was created or last rotated (e.g. "Last rotated: 5 days ago").
+- **Copy Token button** — copy the full token from Settings to use in another browser or device.
+- **File serving protected** — the `/sandbox/*` static file route is now token-protected. Previously it was publicly accessible to anyone who knew the port.
+- **Socket.IO auth updated** — WebSocket connections now use the same dynamic token validation as the REST API, including grace period support.
+
+#### Internal Changes
+
+- `server/services/tokenState.ts` — new module managing in-memory token state: `initToken()`, `isValidToken()`, `hasTokenRequired()`, `rotateToken()`, `reloadTokenState()`.
+- `server/services/data.ts` — added `accessToken`, `accessTokenPrev`, `accessTokenRotatedAt`, `accessTokenCreatedAt` fields to the `Settings` interface.
+- `server/index.ts` — replaced static `ACCESS_TOKEN` constant with dynamic token state; added public `/api/auth/token-hint` endpoint; protected `/sandbox` static route; updated Socket.IO middleware.
+- `server/routes/settings.ts` — added `GET /settings/token-info`, `GET /settings/full-token`, `POST /settings/rotate-token` endpoints.
+- `client/src/components/AuthGate.tsx` — login screen now fetches and displays the full token with a Copy & Fill button.
+- `client/src/pages/SettingsPage.tsx` — new **Access Security** card with token preview, rotation age, grace period notice, Copy Token button, and Rotate Token button.
+- `client/src/utils/api.ts` — added `getTokenInfo`, `getFullToken`, `rotateToken` API calls.
+
+---
 
 ### v0.1.0 — 2026-03-11
 

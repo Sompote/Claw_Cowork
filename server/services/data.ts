@@ -85,6 +85,11 @@ export interface Settings {
   // Telegram
   telegramBotToken?: string;
   telegramChatId?: string;
+  // Access token
+  accessToken?: string;
+  accessTokenPrev?: string;
+  accessTokenRotatedAt?: string;
+  accessTokenCreatedAt?: string;
   [key: string]: any;
 }
 
