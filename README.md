@@ -8,72 +8,6 @@ A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork
 
 ---
 
-## Changelog
-
-### v0.1.0 — 2026-03-11
-
-#### New Features
-
-- **Telegram integration** — Connect a Telegram bot to Claw Cowork. Messages sent to your bot are answered by the AI agent in real time. Replies are sent back to Telegram automatically. Full two-way conversation with persistent chat history.
-  - Settings → Telegram: enter bot token, click Connect, then click **Detect my Chat ID** after sending `/start` to your bot
-  - Chat ID is auto-detected and saved the moment the bot receives any message
-  - Conversation history stored in `chat_history.json` as a `telegram_<chatId>` session, visible in the chat sidebar
-  - Long messages (>4096 chars) are split automatically to fit Telegram's limit
-  - See [Telegram Setup](#telegram-setup) below
-
-- **AI backend connection improvements** — Settings page now has a clearer **AI Backend** section with an inline connection guide for both OpenRouter and local OpenClaw gateway
-  - Connecting to a local OpenClaw instance: set URL to `http://localhost:18789/v1/chat/completions`, API key to your `OPENCLAW_GATEWAY_TOKEN`, model to `openclaw`
-
-#### Bug Fixes
-
-- **"Bad Request" on chat** — Removed hardcoded `max_tokens: 81920` which caused 400 errors on models with lower output limits. Each model now uses its own default.
-- **"404 chat not found" on chat** — Fixed URL normalization bug: URLs ending in `/chat` were incorrectly appended to become `.../chat/chat/completions`. Now strips partial suffixes before normalizing.
-- **Better API error messages** — Chat errors now show the actual API error text and a specific hint (check API key / check URL / check model name) instead of a raw status code.
-- **Test connection** — Same URL normalization and error detail improvements applied to the Settings test-connection endpoint.
-- **Telegram "chat not found"** — Fixed by removing `parse_mode: "Markdown"` from `sendMessage` calls (Telegram rejects messages with unescaped special characters in Markdown mode). Plain text is now used by default.
-
-#### Internal Changes
-
-- `server/services/telegram.ts` — Full rewrite: polling loop now saves `chatId` to `settings.json` on every received message; added `replyToTelegramMessage()` that runs the agent loop and sends the response back; initial sync-poll on connect grabs any messages received while the server was offline.
-- `server/routes/telegram.ts` — Added `/detect-chat-id` endpoint (reads from in-memory state or settings, no concurrent `getUpdates`); improved `/send` error messages.
-- `server/services/agent.ts` — Fixed `normalizeApiUrl()` to handle partial suffixes; removed hardcoded `max_tokens`; improved error detail parsing.
-- `server/routes/settings.ts` — Same URL normalization applied to test-connection; improved error detail in response.
-- `client/src/pages/SettingsPage.tsx` — New AI Backend section with OpenClaw connection hint; Telegram section with step-by-step guide, Detect my Chat ID button, and inline error explanations.
-- `client/src/utils/api.ts` — Added `telegramStatus`, `telegramConnect`, `telegramDisconnect`, `telegramDetectChatId`, `telegramSend`.
-
----
-
-### v0.0.2 — 2026-03-10
-
-#### New Features
-- **PDF reading for the agent** — New `read_pdf` tool lets the agent extract and analyze text from uploaded PDF files. The agent now automatically uses `read_pdf` instead of `read_file` when working with `.pdf` attachments.
-- **PDF/DOCX preview in chat attachments** — User-uploaded PDF and Word documents now show an inline expandable text preview directly in the chat message (click the ▼ button to expand).
-
-#### Bug Fixes
-- **Output panel: generated PDFs now appear correctly** — Fixed a path bug where agent-generated PDF files (and other outputs) were saved to a double-nested `output_file/output_file/` directory and missed by the file scanner. Files now correctly appear in the right-side output panel.
-- **File scanner is now recursive** — The output file scanner in the Python runner now walks all subdirectories under `output_file/`, so files saved at any depth are detected and shown in the output panel. Detection window extended from 30s to 60s to support slower PDF generation jobs.
-- **System prompt path guidance fixed** — Agent instructions now explicitly warn against prefixing save paths with `output_file/` (the Python working directory is already set there), preventing the double-path issue.
-
-#### Internal Changes
-- `server/services/python.ts` — Recursive `scanDir()` replaces flat `readdirSync` for output file detection.
-- `server/services/toolbox.ts` — Added `read_pdf` tool definition and implementation using `pdf-parse`.
-- `server/services/agent.ts` — Updated system prompt: added `read_pdf` to tool list and OUTPUT/CHARTS path rules.
-- `client/src/pages/ChatPage.tsx` — Added `AttachmentItem` component with expandable PDF/DOCX preview; hoisted `isImageFile` to module scope.
-- `client/src/pages/ChatPage.css` — New styles for expandable attachment preview.
-
----
-
-### v0.0.1 — Initial Release
-
-- Initial release combining Tiger Cowork frontend with OpenClaw agent backend.
-- Single-port Express + Vite setup.
-- Agent tools: `web_search`, `fetch_url`, `run_python`, `run_react`, `run_shell`, `read_file`, `write_file`, `list_files`, `list_skills`, `load_skill`, `clawhub_search`, `clawhub_install`, `spawn_subagent`, MCP tools.
-- Projects, Files, Tasks, Skills, Settings pages.
-- Reflection loop, subagent spawning (max depth 3), tool access policy per project folder.
-- Docker setup guide and PM2 support.
-
----
-
 ## SECURITY WARNING
 
 > **THIS APPLICATION EXECUTES AI-GENERATED CODE, SHELL COMMANDS, AND THIRD-PARTY SKILLS ON YOUR MACHINE.**
@@ -695,3 +629,69 @@ Output files generated by the agent (charts, reports, React components) are save
 ## License
 
 MIT
+
+---
+
+## Changelog
+
+### v0.1.0 — 2026-03-11
+
+#### New Features
+
+- **Telegram integration** — Connect a Telegram bot to Claw Cowork. Messages sent to your bot are answered by the AI agent in real time. Replies are sent back to Telegram automatically. Full two-way conversation with persistent chat history.
+  - Settings → Telegram: enter bot token, click Connect, then click **Detect my Chat ID** after sending `/start` to your bot
+  - Chat ID is auto-detected and saved the moment the bot receives any message
+  - Conversation history stored in `chat_history.json` as a `telegram_<chatId>` session, visible in the chat sidebar
+  - Long messages (>4096 chars) are split automatically to fit Telegram's limit
+  - See [Telegram Setup](#telegram-setup) above
+
+- **AI backend connection improvements** — Settings page now has a clearer **AI Backend** section with an inline connection guide for both OpenRouter and local OpenClaw gateway
+  - Connecting to a local OpenClaw instance: set URL to `http://localhost:18789/v1/chat/completions`, API key to your `OPENCLAW_GATEWAY_TOKEN`, model to `openclaw`
+
+#### Bug Fixes
+
+- **"Bad Request" on chat** — Removed hardcoded `max_tokens: 81920` which caused 400 errors on models with lower output limits. Each model now uses its own default.
+- **"404 chat not found" on chat** — Fixed URL normalization bug: URLs ending in `/chat` were incorrectly appended to become `.../chat/chat/completions`. Now strips partial suffixes before normalizing.
+- **Better API error messages** — Chat errors now show the actual API error text and a specific hint (check API key / check URL / check model name) instead of a raw status code.
+- **Test connection** — Same URL normalization and error detail improvements applied to the Settings test-connection endpoint.
+- **Telegram "chat not found"** — Fixed by removing `parse_mode: "Markdown"` from `sendMessage` calls (Telegram rejects messages with unescaped special characters in Markdown mode). Plain text is now used by default.
+
+#### Internal Changes
+
+- `server/services/telegram.ts` — Full rewrite: polling loop now saves `chatId` to `settings.json` on every received message; added `replyToTelegramMessage()` that runs the agent loop and sends the response back; initial sync-poll on connect grabs any messages received while the server was offline.
+- `server/routes/telegram.ts` — Added `/detect-chat-id` endpoint (reads from in-memory state or settings, no concurrent `getUpdates`); improved `/send` error messages.
+- `server/services/agent.ts` — Fixed `normalizeApiUrl()` to handle partial suffixes; removed hardcoded `max_tokens`; improved error detail parsing.
+- `server/routes/settings.ts` — Same URL normalization applied to test-connection; improved error detail in response.
+- `client/src/pages/SettingsPage.tsx` — New AI Backend section with OpenClaw connection hint; Telegram section with step-by-step guide, Detect my Chat ID button, and inline error explanations.
+- `client/src/utils/api.ts` — Added `telegramStatus`, `telegramConnect`, `telegramDisconnect`, `telegramDetectChatId`, `telegramSend`.
+
+---
+
+### v0.0.2 — 2026-03-10
+
+#### New Features
+- **PDF reading for the agent** — New `read_pdf` tool lets the agent extract and analyze text from uploaded PDF files. The agent now automatically uses `read_pdf` instead of `read_file` when working with `.pdf` attachments.
+- **PDF/DOCX preview in chat attachments** — User-uploaded PDF and Word documents now show an inline expandable text preview directly in the chat message (click the ▼ button to expand).
+
+#### Bug Fixes
+- **Output panel: generated PDFs now appear correctly** — Fixed a path bug where agent-generated PDF files (and other outputs) were saved to a double-nested `output_file/output_file/` directory and missed by the file scanner. Files now correctly appear in the right-side output panel.
+- **File scanner is now recursive** — The output file scanner in the Python runner now walks all subdirectories under `output_file/`, so files saved at any depth are detected and shown in the output panel. Detection window extended from 30s to 60s to support slower PDF generation jobs.
+- **System prompt path guidance fixed** — Agent instructions now explicitly warn against prefixing save paths with `output_file/` (the Python working directory is already set there), preventing the double-path issue.
+
+#### Internal Changes
+- `server/services/python.ts` — Recursive `scanDir()` replaces flat `readdirSync` for output file detection.
+- `server/services/toolbox.ts` — Added `read_pdf` tool definition and implementation using `pdf-parse`.
+- `server/services/agent.ts` — Updated system prompt: added `read_pdf` to tool list and OUTPUT/CHARTS path rules.
+- `client/src/pages/ChatPage.tsx` — Added `AttachmentItem` component with expandable PDF/DOCX preview; hoisted `isImageFile` to module scope.
+- `client/src/pages/ChatPage.css` — New styles for expandable attachment preview.
+
+---
+
+### v0.0.1 — Initial Release
+
+- Initial release combining Tiger Cowork frontend with OpenClaw agent backend.
+- Single-port Express + Vite setup.
+- Agent tools: `web_search`, `fetch_url`, `run_python`, `run_react`, `run_shell`, `read_file`, `write_file`, `list_files`, `list_skills`, `load_skill`, `clawhub_search`, `clawhub_install`, `spawn_subagent`, MCP tools.
+- Projects, Files, Tasks, Skills, Settings pages.
+- Reflection loop, subagent spawning (max depth 3), tool access policy per project folder.
+- Docker setup guide and PM2 support.
