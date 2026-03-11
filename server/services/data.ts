@@ -82,6 +82,9 @@ export interface Settings {
   openRouterSearchMaxResults?: number;
   // Python
   pythonPath?: string;
+  // Telegram
+  telegramBotToken?: string;
+  telegramChatId?: string;
   [key: string]: any;
 }
 

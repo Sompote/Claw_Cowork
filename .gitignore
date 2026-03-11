@@ -33,3 +33,6 @@ __pycache__/
 # Editor
 .vscode/
 .idea/
+
+# Uploaded files (runtime, may contain user data)
+uploads/

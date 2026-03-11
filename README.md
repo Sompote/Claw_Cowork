@@ -1,6 +1,6 @@
 # Claw Cowork
 
-**Version 0.0.2**
+**Version 0.1.0**
 
 ![Claw Cowork Screenshot](picture/scree_claw.png)
 
@@ -9,6 +9,39 @@ A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork
 ---
 
 ## Changelog
+
+### v0.1.0 — 2026-03-11
+
+#### New Features
+
+- **Telegram integration** — Connect a Telegram bot to Claw Cowork. Messages sent to your bot are answered by the AI agent in real time. Replies are sent back to Telegram automatically. Full two-way conversation with persistent chat history.
+  - Settings → Telegram: enter bot token, click Connect, then click **Detect my Chat ID** after sending `/start` to your bot
+  - Chat ID is auto-detected and saved the moment the bot receives any message
+  - Conversation history stored in `chat_history.json` as a `telegram_<chatId>` session, visible in the chat sidebar
+  - Long messages (>4096 chars) are split automatically to fit Telegram's limit
+  - See [Telegram Setup](#telegram-setup) below
+
+- **AI backend connection improvements** — Settings page now has a clearer **AI Backend** section with an inline connection guide for both OpenRouter and local OpenClaw gateway
+  - Connecting to a local OpenClaw instance: set URL to `http://localhost:18789/v1/chat/completions`, API key to your `OPENCLAW_GATEWAY_TOKEN`, model to `openclaw`
+
+#### Bug Fixes
+
+- **"Bad Request" on chat** — Removed hardcoded `max_tokens: 81920` which caused 400 errors on models with lower output limits. Each model now uses its own default.
+- **"404 chat not found" on chat** — Fixed URL normalization bug: URLs ending in `/chat` were incorrectly appended to become `.../chat/chat/completions`. Now strips partial suffixes before normalizing.
+- **Better API error messages** — Chat errors now show the actual API error text and a specific hint (check API key / check URL / check model name) instead of a raw status code.
+- **Test connection** — Same URL normalization and error detail improvements applied to the Settings test-connection endpoint.
+- **Telegram "chat not found"** — Fixed by removing `parse_mode: "Markdown"` from `sendMessage` calls (Telegram rejects messages with unescaped special characters in Markdown mode). Plain text is now used by default.
+
+#### Internal Changes
+
+- `server/services/telegram.ts` — Full rewrite: polling loop now saves `chatId` to `settings.json` on every received message; added `replyToTelegramMessage()` that runs the agent loop and sends the response back; initial sync-poll on connect grabs any messages received while the server was offline.
+- `server/routes/telegram.ts` — Added `/detect-chat-id` endpoint (reads from in-memory state or settings, no concurrent `getUpdates`); improved `/send` error messages.
+- `server/services/agent.ts` — Fixed `normalizeApiUrl()` to handle partial suffixes; removed hardcoded `max_tokens`; improved error detail parsing.
+- `server/routes/settings.ts` — Same URL normalization applied to test-connection; improved error detail in response.
+- `client/src/pages/SettingsPage.tsx` — New AI Backend section with OpenClaw connection hint; Telegram section with step-by-step guide, Detect my Chat ID button, and inline error explanations.
+- `client/src/utils/api.ts` — Added `telegramStatus`, `telegramConnect`, `telegramDisconnect`, `telegramDetectChatId`, `telegramSend`.
+
+---
 
 ### v0.0.2 — 2026-03-10
 
@@ -26,7 +59,7 @@ A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork
 - `server/services/toolbox.ts` — Added `read_pdf` tool definition and implementation using `pdf-parse`.
 - `server/services/agent.ts` — Updated system prompt: added `read_pdf` to tool list and OUTPUT/CHARTS path rules.
 - `client/src/pages/ChatPage.tsx` — Added `AttachmentItem` component with expandable PDF/DOCX preview; hoisted `isImageFile` to module scope.
-- `client/src/pages/ChatPage.css` — New styles for expandable attachment preview (`.attachment-item-header`, `.attachment-preview-toggle`, `.attachment-doc-preview`).
+- `client/src/pages/ChatPage.css` — New styles for expandable attachment preview.
 
 ---
 
@@ -185,6 +218,53 @@ To keep the app running after you disconnect, use PM2 (see [Running with PM2](#r
 
 ---
 
+## Telegram Setup
+
+Connect a Telegram bot so the AI agent answers messages sent directly to it.
+
+### 1 — Create a bot
+
+1. Open Telegram and message **@BotFather**
+2. Send `/newbot` and follow the prompts
+3. Copy the bot token (format: `1234567890:AABBccddEEff...`)
+
+### 2 — Connect in Settings
+
+1. Go to **Settings → Telegram**
+2. Paste the token into **Bot Token**
+3. Click **Save changes**
+4. Click **Connect** — status shows *Connected as @YourBotName*
+
+### 3 — Set your Chat ID
+
+1. Open your bot in Telegram and send any message (e.g. `/start`)
+2. Back in Settings, click **Detect my Chat ID** — the field auto-fills
+3. Click **Save changes**
+
+### 4 — Test
+
+Use the **Send test message** box in Settings to confirm the bot can reach you.
+
+### How it works
+
+- The server runs a long-poll loop that receives messages from Telegram in real time
+- Each incoming message is passed to the AI agent (same agent loop used in the web chat)
+- The agent's reply is sent back to the Telegram chat automatically
+- Conversation history is saved as a `telegram_<chatId>` session — visible in the **Chat** sidebar
+- Long replies (>4096 characters) are split into multiple messages automatically
+
+### Connecting to a local OpenClaw gateway
+
+If you are running OpenClaw locally, you can point Claw Cowork at it instead of OpenRouter:
+
+| Setting | Value |
+|---------|-------|
+| API URL | `http://localhost:18789/v1/chat/completions` |
+| API Key | your `OPENCLAW_GATEWAY_TOKEN` |
+| Model | `openclaw` (any value works) |
+
+---
+
 ## Mounting Host Folders
 
 Give the AI access to specific directories on your host by mounting them as Docker volumes at container startup.
@@ -272,7 +352,7 @@ docker-compose up
 - **Files** — Sandbox file manager with upload, edit, download, and preview (PDF, DOCX, images)
 - **Tasks** — Scheduled cron jobs for automated commands
 - **Skills** — ClawHub skill marketplace: search, install, and manage skills
-- **Settings** — Full API configuration, agent tuning, MCP server management
+- **Settings** — Full API configuration, agent tuning, MCP server management, Telegram integration
 
 ### Backend Agent (from OpenClaw)
 - **Sectioned system prompt** — Identity / Tooling / Workspace / Skills / Memory sections
@@ -282,6 +362,12 @@ docker-compose up
 - **Reflection loop** — Optional self-evaluation: score output, identify gaps, re-enter loop if score < threshold
 - **Tool policy** — Per-project folder access control (read-only / read-write / full exec)
 - **OpenRouter-native** — Default API URL points to OpenRouter; works with any OpenAI-compatible endpoint
+
+### Telegram Bot
+- **Two-way messaging** — Send and receive messages via your Telegram bot
+- **Agent-powered replies** — Every incoming Telegram message goes through the full AI agent loop
+- **Persistent history** — Conversations stored in chat history, visible in the web UI sidebar
+- **Auto chat ID detection** — Polling loop saves your chat ID automatically on first message
 
 ### Single Port
 Vite dev server runs in middleware mode embedded inside Express — both the React UI and all `/api/*` routes are served on **one port** (default `3001`).
@@ -336,7 +422,8 @@ claw_cowork/
 │   │   ├── tasks.ts              # Cron job scheduling
 │   │   ├── tools.ts              # Web search + URL fetch proxy
 │   │   ├── python.ts             # Python execution endpoint
-│   │   └── clawhub.ts            # ClawHub marketplace proxy
+│   │   ├── clawhub.ts            # ClawHub marketplace proxy
+│   │   └── telegram.ts           # Telegram bot API routes
 │   └── services/
 │       ├── agent.ts              # Core agent: loop, subagents, reflection, prompt builder
 │       ├── toolbox.ts            # Tool definitions + dispatcher (incl. spawn_subagent)
@@ -346,6 +433,7 @@ claw_cowork/
 │       ├── python.ts             # Python subprocess runner
 │       ├── sandbox.ts            # Sandboxed file access helpers
 │       ├── scheduler.ts          # node-cron job scheduler
+│       ├── telegram.ts           # Telegram bot: polling, agent reply, chat ID detection
 │       └── clawhub.ts            # ClawHub CLI wrapper
 ├── client/
 │   ├── index.html
@@ -515,6 +603,13 @@ Main Agent (depth 0)
 | `agentEvalThreshold` | Min score (0.0–1.0) to consider satisfied | `0.7` |
 | `agentMaxReflectionRetries` | Max re-evaluation rounds | `2` |
 
+### Telegram
+
+| Field | Description |
+|-------|-------------|
+| `telegramBotToken` | Bot token from @BotFather |
+| `telegramChatId` | Target chat ID — auto-filled by Detect my Chat ID |
+
 ---
 
 ## Environment Variables
@@ -577,8 +672,8 @@ All data is stored as JSON files in the `data/` directory:
 
 | File | Contents |
 |------|----------|
-| `settings.json` | API config, agent params, MCP servers |
-| `chat_history.json` | All chat sessions and messages |
+| `settings.json` | API config, agent params, MCP servers, Telegram config |
+| `chat_history.json` | All chat sessions and messages (including Telegram conversations) |
 | `projects.json` | Project definitions |
 | `skills.json` | Installed skill registry |
 | `tasks.json` | Scheduled cron tasks |

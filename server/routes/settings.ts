@@ -18,6 +18,9 @@ settingsRouter.get("/", (_req, res) => {
     masked.openRouterSearchApiKey =
       masked.openRouterSearchApiKey.slice(0, 8) + "..." + masked.openRouterSearchApiKey.slice(-4);
   }
+  if (masked.telegramBotToken && masked.telegramBotToken.length > 12) {
+    masked.telegramBotToken = masked.telegramBotToken.slice(0, 8) + "..." + masked.telegramBotToken.slice(-4);
+  }
   res.json(masked);
 });
 
@@ -29,14 +32,24 @@ settingsRouter.put("/", (req, res) => {
   if (req.body.webSearchApiKey?.includes("...")) updated.webSearchApiKey = current.webSearchApiKey;
   if (req.body.openRouterSearchApiKey?.includes("..."))
     updated.openRouterSearchApiKey = current.openRouterSearchApiKey;
+  if (req.body.telegramBotToken?.includes("..."))
+    updated.telegramBotToken = current.telegramBotToken;
   saveSettings(updated);
   res.json({ success: true });
 });
 
+function normalizeApiUrl(rawUrl: string): string {
+  let url = rawUrl.trim().replace(/\/+$/, "");
+  if (url.endsWith("/chat/completions")) return url;
+  if (url.endsWith("/completions")) url = url.slice(0, -"/completions".length);
+  if (url.endsWith("/chat")) url = url.slice(0, -"/chat".length);
+  return url + "/chat/completions";
+}
+
 settingsRouter.post("/test-connection", async (req, res) => {
   const { apiKey, apiUrl, apiModel } = req.body;
   try {
-    const url = apiUrl || "https://openrouter.ai/api/v1/chat/completions";
+    const url = normalizeApiUrl(apiUrl || "https://openrouter.ai/api/v1/chat/completions");
     const response = await fetch(url, {
       method: "POST",
       headers: {
@@ -54,8 +67,18 @@ settingsRouter.post("/test-connection", async (req, res) => {
     if (response.ok) {
       res.json({ success: true, message: "Connection successful" });
     } else {
-      const err = await response.text();
-      res.json({ success: false, message: `Error ${response.status}: ${err}` });
+      let errDetail = "";
+      try {
+        const errJson = await response.json();
+        errDetail = errJson?.error?.message || errJson?.message || JSON.stringify(errJson);
+      } catch {
+        errDetail = await response.text().catch(() => String(response.status));
+      }
+      const hint =
+        response.status === 401 ? " (invalid API key)" :
+        response.status === 404 ? ` (wrong URL: ${url})` :
+        response.status === 400 ? " (bad request — check model name)" : "";
+      res.json({ success: false, message: `Error ${response.status}${hint}: ${errDetail}` });
     }
   } catch (err: any) {
     res.json({ success: false, message: err.message });

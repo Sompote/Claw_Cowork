@@ -128,6 +128,13 @@ export const api = {
   // Tools
   webSearch: (query: string) => request("/tools/web-search", { method: "POST", body: JSON.stringify({ query }) }),
 
+  // Telegram
+  telegramStatus: () => request("/telegram/status"),
+  telegramConnect: (token?: string) => request("/telegram/connect", { method: "POST", body: JSON.stringify({ token }) }),
+  telegramDisconnect: () => request("/telegram/disconnect", { method: "POST" }),
+  telegramDetectChatId: () => request("/telegram/detect-chat-id", { method: "POST" }),
+  telegramSend: (text: string, chatId?: string) => request("/telegram/send", { method: "POST", body: JSON.stringify({ text, chatId }) }),
+
   // MCP
   mcpStatus: () => request("/settings/mcp/status"),
   mcpConnect: (name: string, url: string) => request("/settings/mcp/connect", { method: "POST", body: JSON.stringify({ name, url }) }),

@@ -15,6 +15,7 @@ import { pythonRouter } from "./routes/python";
 import { toolsRouter } from "./routes/tools";
 import { clawhubRouter } from "./routes/clawhub";
 import { projectsRouter } from "./routes/projects";
+import { telegramRouter } from "./routes/telegram";
 import { setupSocket } from "./services/socket";
 import { initMcpServers } from "./services/mcp";
 
@@ -100,6 +101,7 @@ app.use("/api/python", pythonRouter);
 app.use("/api/tools", toolsRouter);
 app.use("/api/clawhub", clawhubRouter);
 app.use("/api/projects", projectsRouter);
+app.use("/api/telegram", telegramRouter);
 
 // Serve sandbox files
 app.use("/sandbox", express.static(SANDBOX_DIR));

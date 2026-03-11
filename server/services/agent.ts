@@ -30,14 +30,21 @@ export interface AgentResponse {
 
 // ─── API Config ───────────────────────────────────────────────────────────────
 
+function normalizeApiUrl(rawUrl: string): string {
+  let url = rawUrl.trim().replace(/\/+$/, ""); // strip trailing slashes
+  if (url.endsWith("/chat/completions")) return url;
+  // Strip partial suffixes that would corrupt the path
+  if (url.endsWith("/completions")) url = url.slice(0, -"/completions".length);
+  if (url.endsWith("/chat")) url = url.slice(0, -"/chat".length);
+  return url + "/chat/completions";
+}
+
 function getApiConfig() {
   const settings = getSettings();
   const apiKey = settings.apiKey;
   const model = settings.apiModel || "openai/gpt-4o-mini";
   const rawUrl = settings.apiUrl || "https://openrouter.ai/api/v1/chat/completions";
-  const apiUrl = rawUrl.endsWith("/chat/completions")
-    ? rawUrl
-    : rawUrl.replace(/\/$/, "") + "/chat/completions";
+  const apiUrl = normalizeApiUrl(rawUrl);
   return { apiKey, model, apiUrl };
 }
 
@@ -55,7 +62,6 @@ async function llmCall(
     model: options.model || model,
     messages,
     temperature: settings.agentTemperature ?? 0.7,
-    max_tokens: 81920,
   };
   if (options.tools && options.tools.length) {
     body.tools = options.tools;
@@ -74,8 +80,22 @@ async function llmCall(
   });
 
   if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`API Error (${response.status}): ${error}`);
+    let errorDetail = "";
+    try {
+      const errJson = await response.json();
+      errorDetail = errJson?.error?.message || errJson?.message || JSON.stringify(errJson);
+    } catch {
+      errorDetail = await response.text().catch(() => "");
+    }
+    const hint =
+      response.status === 401
+        ? " — check your API key in Settings"
+        : response.status === 404
+          ? ` — check API URL in Settings (currently: ${apiUrl})`
+          : response.status === 400
+            ? " — check model name or API key in Settings"
+            : "";
+    throw new Error(`API Error ${response.status}${hint}: ${errorDetail}`);
   }
 
   const json = await response.json();

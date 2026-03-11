@@ -9,6 +9,13 @@ interface McpStatus {
   tools: string[];
 }
 
+interface TelegramStatus {
+  connected: boolean;
+  botInfo: { id: number; username: string; first_name: string } | null;
+  lastChatId?: string;
+  lastChatUsername?: string;
+}
+
 export default function SettingsPage() {
   const [settings, setSettings] = useState<any>({});
   const [saved, setSaved] = useState(false);
@@ -17,10 +24,16 @@ export default function SettingsPage() {
   const [mcpStatuses, setMcpStatuses] = useState<McpStatus[]>([]);
   const [mcpConnecting, setMcpConnecting] = useState<string | null>(null);
   const [mcpMessage, setMcpMessage] = useState<{ name: string; text: string; ok: boolean } | null>(null);
+  const [telegramStatus, setTelegramStatus] = useState<TelegramStatus>({ connected: false, botInfo: null });
+  const [telegramConnecting, setTelegramConnecting] = useState(false);
+  const [telegramDetecting, setTelegramDetecting] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState<{ text: string; ok: boolean } | null>(null);
+  const [telegramTestMsg, setTelegramTestMsg] = useState("");
 
   useEffect(() => {
     api.getSettings().then(setSettings);
     api.mcpStatus().then(setMcpStatuses).catch(() => {});
+    api.telegramStatus().then(setTelegramStatus).catch(() => {});
   }, []);
 
   const save = async () => {
@@ -81,6 +94,59 @@ export default function SettingsPage() {
     api.mcpStatus().then(setMcpStatuses).catch(() => {});
   };
 
+  const connectTelegram = async () => {
+    setTelegramConnecting(true);
+    setTelegramMessage(null);
+    try {
+      // Save settings first so server has the latest token
+      await api.saveSettings(settings);
+      const result = await api.telegramConnect();
+      if (result.ok) {
+        setTelegramMessage({ text: `Connected as @${result.botInfo?.username || "bot"}`, ok: true });
+        setTelegramStatus({ connected: true, botInfo: result.botInfo });
+      } else {
+        setTelegramMessage({ text: result.error || "Connection failed", ok: false });
+      }
+    } catch (err: any) {
+      setTelegramMessage({ text: err.message, ok: false });
+    }
+    setTelegramConnecting(false);
+  };
+
+  const disconnectTelegram = async () => {
+    await api.telegramDisconnect();
+    setTelegramStatus({ connected: false, botInfo: null });
+    setTelegramMessage({ text: "Disconnected", ok: true });
+  };
+
+  const detectTelegramChatId = async () => {
+    setTelegramDetecting(true);
+    setTelegramMessage(null);
+    try {
+      const result = await api.telegramDetectChatId();
+      if (result.ok && result.chatId) {
+        setSettings((prev: any) => ({ ...prev, telegramChatId: result.chatId }));
+        setTelegramMessage({ text: `Chat ID set to ${result.chatId}${result.username && result.username !== result.chatId ? ` (@${result.username})` : ""}. Click Save changes.`, ok: true });
+      } else {
+        setTelegramMessage({ text: result.error || "No messages found", ok: false });
+      }
+    } catch (err: any) {
+      setTelegramMessage({ text: err.message, ok: false });
+    }
+    setTelegramDetecting(false);
+  };
+
+  const sendTelegramTest = async () => {
+    if (!telegramTestMsg.trim()) return;
+    const result = await api.telegramSend(telegramTestMsg);
+    if (result.ok) {
+      setTelegramMessage({ text: "Message sent!", ok: true });
+      setTelegramTestMsg("");
+    } else {
+      setTelegramMessage({ text: result.error || "Send failed", ok: false });
+    }
+  };
+
   const reconnectAll = async () => {
     setMcpConnecting("__all__");
     // Save settings first so server has latest config
@@ -105,18 +171,32 @@ export default function SettingsPage() {
 
       <div className="settings-grid">
         <section className="card">
-          <h3>Claw Cowork API (OpenRouter)</h3>
+          <h3>AI Backend</h3>
+          <p className="hint" style={{ marginBottom: 12 }}>
+            Connect to any OpenAI-compatible API. Use <strong>OpenRouter</strong> for cloud models, or point to your local <strong>OpenClaw</strong> gateway for self-hosted AI.
+          </p>
+
+          <div style={{ background: "var(--bg-secondary, #f5f5f5)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 13, borderLeft: "3px solid var(--primary, #1a73e8)" }}>
+            <strong>Connect to OpenClaw (local):</strong>
+            <div style={{ marginTop: 4, opacity: 0.85 }}>
+              URL: <code>http://localhost:18789/v1/chat/completions</code><br />
+              API Key: your <code>OPENCLAW_GATEWAY_TOKEN</code><br />
+              Model: <code>openclaw</code> (or any value)
+            </div>
+          </div>
+
           <div className="form-group">
             <label>API Key</label>
-            <input type="password" value={settings.apiKey || ""} onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })} placeholder="Enter your Claw Cowork API (OpenRouter) key" />
+            <input type="password" value={settings.apiKey || ""} onChange={(e) => setSettings({ ...settings, apiKey: e.target.value })} placeholder="OpenRouter key or OpenClaw gateway token" />
           </div>
           <div className="form-group">
             <label>API URL</label>
             <input value={settings.apiUrl || ""} onChange={(e) => setSettings({ ...settings, apiUrl: e.target.value })} placeholder="https://openrouter.ai/api/v1/chat/completions" />
+            <p className="hint">Base URL or full path — <code>/chat/completions</code> is appended automatically if missing</p>
           </div>
           <div className="form-group">
             <label>Model</label>
-            <input value={settings.apiModel || ""} onChange={(e) => setSettings({ ...settings, apiModel: e.target.value })} placeholder="e.g. openai/gpt-4o-mini, gpt-4o, claude-sonnet-4-20250514" />
+            <input value={settings.apiModel || ""} onChange={(e) => setSettings({ ...settings, apiModel: e.target.value })} placeholder="e.g. openai/gpt-4o-mini, gpt-4o, openclaw" />
           </div>
           <div className="form-actions">
             <button className="btn btn-secondary" onClick={testConnection}>Test Connection</button>
@@ -260,6 +340,123 @@ export default function SettingsPage() {
                 <p className="hint">How many times to re-evaluate and retry (default: 2, max: 5)</p>
               </div>
             </>
+          )}
+        </section>
+
+        <section className="card">
+          <h3>Telegram</h3>
+          <p className="hint" style={{ marginBottom: 12 }}>
+            Connect a Telegram bot to send and receive messages from Claw Cowork. Create a bot via{" "}
+            <strong>@BotFather</strong> on Telegram to get your token.
+          </p>
+
+          {/* Setup guide */}
+          <div style={{ background: "var(--bg-secondary, #f5f5f5)", borderRadius: 8, padding: "10px 14px", marginBottom: 16, fontSize: 12, lineHeight: 1.7 }}>
+            <strong>Quick setup:</strong>
+            <ol style={{ margin: "4px 0 0 16px", padding: 0 }}>
+              <li>Message <strong>@BotFather</strong> → <code>/newbot</code> → copy the token</li>
+              <li>Paste token → <strong>Save changes</strong> → click <strong>Connect</strong></li>
+              <li>
+                Open your bot in Telegram
+                {telegramStatus.connected && telegramStatus.botInfo?.username && (
+                  <> — <strong>@{telegramStatus.botInfo.username}</strong></>
+                )}{" "}
+                and send any message (e.g. <code>/start</code>)
+              </li>
+              <li>Click <strong>Detect my Chat ID</strong> → auto-fills → <strong>Save changes</strong></li>
+              <li>Send a test message to confirm it works</li>
+            </ol>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
+            <span style={{
+              width: 10, height: 10, borderRadius: "50%",
+              background: telegramStatus.connected ? "#34a853" : "#ea4335",
+              display: "inline-block", flexShrink: 0,
+            }} />
+            <span style={{ fontWeight: 600, fontSize: 13 }}>
+              {telegramStatus.connected
+                ? `Connected${telegramStatus.botInfo ? ` as @${telegramStatus.botInfo.username}` : ""}`
+                : "Disconnected"}
+            </span>
+          </div>
+
+          <div className="form-group">
+            <label>Bot Token</label>
+            <input
+              type="password"
+              value={settings.telegramBotToken || ""}
+              onChange={(e) => setSettings({ ...settings, telegramBotToken: e.target.value })}
+              placeholder="123456789:AABBccddEEff..."
+            />
+            <p className="hint">From @BotFather → /newbot or /mybots</p>
+          </div>
+
+          <div className="form-group">
+            <label>Chat ID</label>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <input
+                style={{ flex: 1 }}
+                value={settings.telegramChatId || ""}
+                onChange={(e) => setSettings({ ...settings, telegramChatId: e.target.value })}
+                placeholder="e.g. 123456789"
+              />
+              <button
+                className="btn btn-secondary btn-sm"
+                onClick={detectTelegramChatId}
+                disabled={!telegramStatus.connected || telegramDetecting}
+                title="Reads your bot's latest messages to find your Chat ID automatically"
+              >
+                {telegramDetecting ? "Detecting..." : "Detect my Chat ID"}
+              </button>
+            </div>
+            <p className="hint">
+              Send any message to your bot in Telegram, then click <strong>Detect my Chat ID</strong>.
+              The ID is saved automatically when your bot receives a message.{" "}
+              <span style={{ color: "#c5221f" }}>
+                "chat not found" = wrong ID or you haven't sent /start yet.
+              </span>
+            </p>
+          </div>
+
+          <div className="form-actions" style={{ gap: 8, flexWrap: "wrap" }}>
+            {!telegramStatus.connected ? (
+              <button
+                className="btn btn-primary"
+                onClick={connectTelegram}
+                disabled={telegramConnecting || !settings.telegramBotToken}
+              >
+                {telegramConnecting ? "Connecting..." : "Connect"}
+              </button>
+            ) : (
+              <button className="btn btn-ghost" onClick={disconnectTelegram}>
+                Disconnect
+              </button>
+            )}
+            {telegramMessage && (
+              <span style={{ fontSize: 12, color: telegramMessage.ok ? "#137333" : "#c5221f", flex: "1 0 100%" }}>
+                {telegramMessage.text}
+              </span>
+            )}
+          </div>
+
+          {telegramStatus.connected && settings.telegramChatId && (
+            <div style={{ marginTop: 16, paddingTop: 16, borderTop: "1px solid var(--border)" }}>
+              <label style={{ fontSize: 13, fontWeight: 500, display: "block", marginBottom: 6 }}>
+                Send test message
+              </label>
+              <div className="inline-form">
+                <input
+                  placeholder="Hello from Claw Cowork!"
+                  value={telegramTestMsg}
+                  onChange={(e) => setTelegramTestMsg(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && sendTelegramTest()}
+                />
+                <button className="btn btn-secondary" onClick={sendTelegramTest} disabled={!telegramTestMsg.trim()}>
+                  Send
+                </button>
+              </div>
+            </div>
           )}
         </section>
 
