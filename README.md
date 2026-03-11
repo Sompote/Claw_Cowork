@@ -8,6 +8,48 @@ A self-hosted AI workspace that merges the rich React frontend of **Tiger Cowork
 
 ---
 
+## What is Claw Cowork?
+
+Claw Cowork is a **personal AI assistant you run on your own server**. You open it in a browser, talk to it like a chat app, and it can actually *do things* — write and run code, search the web, read your files, generate charts, manage projects, and reply to you on Telegram. Everything runs inside Docker on your own machine. No data leaves your server unless you send it to an AI API of your choice.
+
+### What it can do
+
+**Chat with a powerful AI agent**
+Type a message and the agent reasons through it, picks the right tools, and gets things done. It is not just a chatbot — it runs multiple tool calls per turn, can spawn sub-agents for parallel work, and evaluates its own output before finishing.
+
+**Write and run code**
+The agent can write Python scripts and run them immediately inside a sandbox. Charts, reports, and output files appear in the right-side output panel. It can also generate interactive React components and render them live.
+
+**Search the web**
+Built-in web search (DuckDuckGo, Google, or OpenRouter AI search) lets the agent look things up without leaving the conversation.
+
+**Read and work with your files**
+Upload PDFs, Word documents, images, and code files directly into chat. The agent reads them, analyses them, and can generate new files in response. A built-in file manager lets you browse, edit, and download everything in the sandbox.
+
+**Manage projects**
+Create separate workspaces for different projects. Each project has its own working folder, memory notes, skill selection, and file access policy. The agent remembers project context across conversations.
+
+**Telegram bot**
+Connect a Telegram bot in Settings and the agent will answer your messages from Telegram in real time — using the same full agent loop as the web chat. Great for quick questions on the go.
+
+**Extend with skills and MCP**
+Install skills from the ClawHub marketplace (or upload your own) to give the agent new capabilities. Connect external tools via Model Context Protocol (MCP) — any MCP server becomes available as a tool automatically.
+
+**Schedule tasks**
+Set up cron jobs that run agent commands on a schedule — daily reports, monitoring checks, automated workflows.
+
+### Key properties
+
+| Property | Detail |
+|---|---|
+| **Self-hosted** | Runs entirely on your own machine inside Docker |
+| **Single port** | UI and API both served on port 3001 — no reverse proxy needed |
+| **Model-agnostic** | Works with OpenRouter, OpenAI, Anthropic, local OpenClaw, or any OpenAI-compatible API |
+| **No lock-in** | All data stored as plain JSON files in `data/` — portable and easy to back up |
+| **Real-time** | Tool call status, streaming responses, and Telegram messages all use Socket.IO |
+
+---
+
 ## SECURITY WARNING
 
 > **THIS APPLICATION EXECUTES AI-GENERATED CODE, SHELL COMMANDS, AND THIRD-PARTY SKILLS ON YOUR MACHINE.**
