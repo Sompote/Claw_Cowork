@@ -36,10 +36,15 @@ export function useSocket() {
     return () => { socketRef.current?.off("chat:response", cb); };
   }, []);
 
-  const onStatus = useCallback((cb: (data: { status: string }) => void) => {
+  const onStatus = useCallback((cb: (data: { status: string; sessionId?: string; tool?: string }) => void) => {
     socketRef.current?.on("chat:status", cb);
     return () => { socketRef.current?.off("chat:status", cb); };
   }, []);
 
-  return { connected, sendMessage, sendProjectMessage, onChunk, onResponse, onStatus, socket: socketRef };
+  const onActiveSessions = useCallback((cb: (data: Record<string, { status: string; tool?: string }>) => void) => {
+    socketRef.current?.on("chat:active_sessions", cb);
+    return () => { socketRef.current?.off("chat:active_sessions", cb); };
+  }, []);
+
+  return { connected, sendMessage, sendProjectMessage, onChunk, onResponse, onStatus, onActiveSessions, socket: socketRef };
 }

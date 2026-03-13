@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { api } from "../utils/api";
@@ -66,7 +67,7 @@ function AttachmentItem({ f }: { f: AttachedFile }) {
     <div className={`attachment-item ${canPreview ? "previewable" : ""}`}>
       <div className="attachment-item-header">
         {isImageFile(f.name) ? (
-          <img src={`/sandbox/${f.path}`} alt={f.name} className="attachment-image-preview" />
+          <img src={api.sandboxUrl(f.path)} alt={f.name} className="attachment-image-preview" />
         ) : (
           <div className="attachment-icon">{getFileIcon(f.name)}</div>
         )}
@@ -145,7 +146,7 @@ function OutputCanvas({ files }: { files: string[] }) {
           {images.map((f) => (
             <div key={f} className="canvas-image-wrap">
               <img
-                src={`/sandbox/${f}?t=${Date.now()}`}
+                src={api.sandboxUrl(f, true)}
                 alt={f}
                 className={`canvas-image ${expanded === f ? "expanded" : ""}`}
                 onClick={() => setExpanded(expanded === f ? null : f)}
@@ -171,7 +172,7 @@ function OutputCanvas({ files }: { files: string[] }) {
             </a>
           </div>
           <div className="canvas-react-body">
-            <ReactComponentRenderer src={`/sandbox/${f}?t=${Date.now()}`} />
+            <ReactComponentRenderer src={api.sandboxUrl(f, true)} />
           </div>
         </div>
       ))}
@@ -182,7 +183,7 @@ function OutputCanvas({ files }: { files: string[] }) {
           <div className="canvas-html-header">
             <span>{f.split("/").pop()}</span>
             <div style={{ display: "flex", gap: 6 }}>
-              <a href={`/sandbox/${f}`} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open in new tab">
+              <a href={api.sandboxUrl(f)} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open in new tab">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
               </a>
               <a href={api.downloadUrl(f)} download className="canvas-dl-btn" title="Download">
@@ -190,7 +191,7 @@ function OutputCanvas({ files }: { files: string[] }) {
               </a>
             </div>
           </div>
-          <iframe src={`/sandbox/${f}?t=${Date.now()}`} className="canvas-html-iframe" title={f} />
+          <iframe src={api.sandboxUrl(f, true)} className="canvas-html-iframe" title={f} />
         </div>
       ))}
 
@@ -201,7 +202,7 @@ function OutputCanvas({ files }: { files: string[] }) {
             <div className="canvas-doc-icon pdf">PDF</div>
             <span>{f.split("/").pop()}</span>
             <div style={{ display: "flex", gap: 6 }}>
-              <a href={`/sandbox/${f}`} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open in new tab">
+              <a href={api.sandboxUrl(f)} target="_blank" rel="noreferrer" className="canvas-dl-btn" title="Open in new tab">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
               </a>
               <a href={api.downloadUrl(f)} download className="canvas-dl-btn" title="Download">
@@ -210,7 +211,7 @@ function OutputCanvas({ files }: { files: string[] }) {
             </div>
           </div>
           <iframe
-            src={`/sandbox/${f}?t=${Date.now()}`}
+            src={api.sandboxUrl(f, true)}
             className="canvas-pdf-iframe"
             title={f}
           />
@@ -249,6 +250,7 @@ function OutputCanvas({ files }: { files: string[] }) {
 }
 
 export default function ChatPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -256,6 +258,7 @@ export default function ChatPage() {
   const [streaming, setStreaming] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [status, setStatus] = useState("");
+  const [activeSessions, setActiveSessions] = useState<Record<string, string>>({});
   const [attachedFiles, setAttachedFiles] = useState<AttachedFile[]>([]);
   const [uploading, setUploading] = useState(false);
   const [outputPanelOpen, setOutputPanelOpen] = useState(true);
@@ -263,7 +266,7 @@ export default function ChatPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { connected, sendMessage, onChunk, onResponse, onStatus } = useSocket();
+  const { connected, sendMessage, onChunk, onResponse, onStatus, onActiveSessions } = useSocket();
 
   // Collect all output files from messages for the right panel
   const allOutputFiles = messages.reduce<{ files: string[]; msgIndex: number }[]>((acc, msg, i) => {
@@ -274,7 +277,14 @@ export default function ChatPage() {
   }, []);
 
   useEffect(() => {
-    api.getSessions().then(setSessions);
+    api.getSessions().then((loaded) => {
+      setSessions(loaded);
+      const sessionParam = searchParams.get("session");
+      if (sessionParam) {
+        setActiveSession(sessionParam);
+        setSearchParams({}, { replace: true });
+      }
+    });
   }, []);
 
   useEffect(() => {
@@ -282,6 +292,7 @@ export default function ChatPage() {
       api.getSession(activeSession).then((session: any) => {
         setMessages(session.messages || []);
       });
+      setStatus(activeSessions[activeSession] || "");
     }
   }, [activeSession]);
 
@@ -298,6 +309,7 @@ export default function ChatPage() {
         setIsLoading(false);
         setStatus("");
       }
+      setActiveSessions((prev) => { const next = { ...prev }; delete next[data.sessionId]; return next; });
     });
     const unsub3 = onStatus((data: any) => {
       const toolLabels: Record<string, string> = {
@@ -314,22 +326,50 @@ export default function ChatPage() {
         clawhub_search: "Searching ClawHub",
         clawhub_install: "Installing skill",
       };
+      let label = "";
       if (data.status === "thinking") {
-        setStatus("Thinking...");
+        label = "Thinking...";
       } else if (data.status === "running_python") {
-        setStatus("Running Python...");
+        label = "Running Python...";
       } else if (data.status === "tool_call") {
-        const label = toolLabels[data.tool] || data.tool;
-        setStatus(`${label}...`);
+        label = `${toolLabels[data.tool] || data.tool}...`;
       } else if (data.status === "tool_result") {
-        const label = toolLabels[data.tool] || data.tool;
-        setStatus(`${label} done, thinking...`);
-      } else {
-        setStatus("");
+        label = `${toolLabels[data.tool] || data.tool} done, thinking...`;
+      }
+      if (data.sessionId === activeSession) setStatus(label);
+      if (data.sessionId) {
+        setActiveSessions((prev) => label ? { ...prev, [data.sessionId]: label } : (() => { const next = { ...prev }; delete next[data.sessionId]; return next; })());
       }
     });
-    return () => { unsub1(); unsub2(); unsub3(); };
-  }, [activeSession, onChunk, onResponse, onStatus]);
+    const unsub4 = onActiveSessions((data) => {
+      const toolLabels: Record<string, string> = {
+        web_search: "Searching the web",
+        fetch_url: "Fetching URL",
+        run_python: "Running Python",
+        run_react: "Running React",
+        run_shell: "Running command",
+        read_file: "Reading file",
+        write_file: "Writing file",
+        list_files: "Listing files",
+        list_skills: "Listing skills",
+        load_skill: "Loading skill",
+        clawhub_search: "Searching ClawHub",
+        clawhub_install: "Installing skill",
+      };
+      const restored: Record<string, string> = {};
+      for (const [sid, info] of Object.entries(data)) {
+        let label = "Working...";
+        if (info.status === "thinking") label = "Thinking...";
+        else if (info.status === "running_python") label = "Running Python...";
+        else if (info.status === "tool_call") label = `${toolLabels[info.tool!] || info.tool}...`;
+        else if (info.status === "tool_result") label = `${toolLabels[info.tool!] || info.tool} done, thinking...`;
+        restored[sid] = label;
+      }
+      setActiveSessions(restored);
+      if (activeSession && restored[activeSession]) setStatus(restored[activeSession]);
+    });
+    return () => { unsub1(); unsub2(); unsub3(); unsub4(); };
+  }, [activeSession, onChunk, onResponse, onStatus, onActiveSessions]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -467,6 +507,9 @@ export default function ChatPage() {
               onClick={() => { setActiveSession(s.id); setMobileSidebar(false); }}
             >
               <span className="session-title">{s.title}</span>
+              {activeSessions[s.id] && (
+                <span className="session-progress-dot" title={activeSessions[s.id]} />
+              )}
               <button className="session-delete btn-icon btn-ghost" onClick={(e) => deleteSession(s.id, e)}>
                 <Icon name="close" />
               </button>
@@ -541,7 +584,7 @@ export default function ChatPage() {
               {attachedFiles.map((f, i) => (
                 <div key={i} className="attachment-preview-item">
                   {isImageFile(f.name) ? (
-                    <img src={`/sandbox/${f.path}`} alt={f.name} className="attachment-thumb" />
+                    <img src={api.sandboxUrl(f.path)} alt={f.name} className="attachment-thumb" />
                   ) : (
                     <div className="attachment-preview-icon">{getFileIcon(f.name)}</div>
                   )}

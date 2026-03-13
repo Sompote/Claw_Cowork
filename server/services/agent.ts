@@ -370,9 +370,10 @@ export async function runAgentLoop(
     onToolResult?: (name: string, result: any) => void;
     allowedTools?: string[];
     subagentDepth?: number;
+    signal?: AbortSignal;
   } = {}
 ): Promise<AgentResponse> {
-  const { onToolCall, onToolResult, allowedTools, subagentDepth = 0 } = options;
+  const { onToolCall, onToolResult, allowedTools, subagentDepth = 0, signal } = options;
 
   const { apiKey } = getApiConfig();
   if (!apiKey) {
@@ -402,6 +403,9 @@ export async function runAgentLoop(
 
   // ── Main tool loop ──────────────────────────────────────────────────────────
   for (let round = 0; round < maxToolRounds; round++) {
+    if (signal?.aborted) {
+      return { content: "Task cancelled.", toolResults };
+    }
     let data: any;
     try {
       data = await llmCall(allMessages, { tools });

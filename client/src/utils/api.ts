@@ -49,6 +49,11 @@ export const api = {
     const token = getAccessToken();
     return `/api/files/download?path=${encodeURIComponent(path)}${token ? `&token=${encodeURIComponent(token)}` : ""}`;
   },
+  sandboxUrl: (filePath: string, bustCache?: boolean) => {
+    const token = getAccessToken();
+    const ts = bustCache ? `&t=${Date.now()}` : "";
+    return `/sandbox/${filePath}${token ? `?token=${encodeURIComponent(token)}${ts}` : bustCache ? `?t=${Date.now()}` : ""}`;
+  },
   uploadFile: async (file: File, destPath: string) => {
     const form = new FormData();
     form.append("file", file);
@@ -70,6 +75,8 @@ export const api = {
   createTask: (data: any) => request("/tasks", { method: "POST", body: JSON.stringify(data) }),
   updateTask: (id: string, data: any) => request(`/tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
   deleteTask: (id: string) => request(`/tasks/${id}`, { method: "DELETE" }),
+  getActiveAgents: () => request("/tasks/active-agents"),
+  killAgent: (sessionId: string) => request(`/tasks/active-agents/${sessionId}`, { method: "DELETE" }),
 
   // Skills
   getSkills: () => request("/skills"),

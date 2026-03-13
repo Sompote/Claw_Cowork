@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useNavigate } from "react-router-dom";
 import { api } from "../utils/api";
 import "./PageStyles.css";
 
@@ -13,6 +14,13 @@ interface Task {
   createdAt: string;
 }
 
+interface ActiveAgent {
+  status: string;
+  tool?: string;
+  title: string;
+  startedAt: string;
+}
+
 const CRON_PRESETS = [
   { label: "Every minute", value: "* * * * *" },
   { label: "Every hour", value: "0 * * * *" },
@@ -23,12 +31,30 @@ const CRON_PRESETS = [
 
 export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [activeAgents, setActiveAgents] = useState<Record<string, ActiveAgent>>({});
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ name: "", cron: "0 * * * *", command: "" });
+  const navigate = useNavigate();
+
+  const refreshAgents = useCallback(() => {
+    api.getActiveAgents().then(setActiveAgents);
+  }, []);
 
   useEffect(() => {
     api.getTasks().then(setTasks);
-  }, []);
+    refreshAgents();
+    const interval = setInterval(refreshAgents, 2000);
+    return () => clearInterval(interval);
+  }, [refreshAgents]);
+
+  const killAgent = async (sessionId: string) => {
+    await api.killAgent(sessionId);
+    setActiveAgents((prev) => { const next = { ...prev }; delete next[sessionId]; return next; });
+  };
+
+  const openChat = (sessionId: string) => {
+    navigate(`/?session=${sessionId}`);
+  };
 
   const createTask = async () => {
     const task = await api.createTask(form);
@@ -47,12 +73,43 @@ export default function TasksPage() {
     setTasks((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const agentEntries = Object.entries(activeAgents);
+
   return (
     <div className="page">
       <div className="page-header">
-        <h1>Scheduled Tasks</h1>
+        <h1>Tasks</h1>
         <button className="btn btn-primary" onClick={() => setShowForm(true)}>New task</button>
       </div>
+
+      {agentEntries.length > 0 && (
+        <section className="active-agents-section">
+          <h2 className="section-title">Active Agent Tasks</h2>
+          <div className="card-list">
+            {agentEntries.map(([sessionId, agent]) => (
+              <div key={sessionId} className="card active-agent-card">
+                <div className="card-header">
+                  <div className="card-title-row">
+                    <span className="agent-pulse-dot" />
+                    <h3 className="active-agent-title">{agent.title}</h3>
+                    <span className="status-badge active">{agent.status === "tool_call" || agent.status === "tool_result" ? agent.tool || agent.status : agent.status}</span>
+                  </div>
+                  <div className="card-actions">
+                    <button className="btn btn-ghost btn-sm" onClick={() => openChat(sessionId)}>Open chat</button>
+                    <button className="btn btn-danger btn-sm" onClick={() => killAgent(sessionId)}>Kill</button>
+                  </div>
+                </div>
+                <div className="card-body">
+                  <div className="card-detail"><strong>Started:</strong> {new Date(agent.startedAt).toLocaleTimeString()}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section>
+        <h2 className="section-title">Scheduled Tasks</h2>
 
       {showForm && (
         <div className="card form-card">
@@ -113,6 +170,7 @@ export default function TasksPage() {
           </div>
         )}
       </div>
+      </section>
     </div>
   );
 }

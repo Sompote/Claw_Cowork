@@ -1,5 +1,6 @@
 import { getSettings, saveSettings, getChatHistory, saveChatHistory } from "./data";
 import { runAgentLoop, callAgent, buildSystemPrompt } from "./agent";
+import { getActiveAgentSessions, registerActiveSession, unregisterActiveSession } from "./socket";
 
 const TELEGRAM_API = "https://api.telegram.org/bot";
 
@@ -131,8 +132,18 @@ async function replyToTelegramMessage(chatId: string, text: string, username: st
   const token = currentToken;
   if (!token) return;
 
-  // Maintain a per-chat session in chat history
+  // If this telegram session already has an agent task running, notify and bail
   const sessionId = `telegram_${chatId}`;
+  const active = getActiveAgentSessions();
+  if (active[sessionId]) {
+    const statusLabel = active[sessionId].status === "tool_call" || active[sessionId].status === "tool_result"
+      ? `using ${active[sessionId].tool || active[sessionId].status}`
+      : active[sessionId].status;
+    await sendTelegramMessage(token, chatId, `⏳ Still working on your previous request (${statusLabel}). Please wait...`);
+    return;
+  }
+
+  // Maintain a per-chat session in chat history
   const sessions = getChatHistory();
   let session = sessions.find((s) => s.id === sessionId);
   if (!session) {
@@ -156,10 +167,38 @@ async function replyToTelegramMessage(chatId: string, text: string, username: st
     content: m.content,
   }));
 
+  const controller = new AbortController();
+  registerActiveSession(sessionId, `Telegram: @${username}`, controller);
+
+  // Immediately acknowledge so user knows we're working
+  await sendTelegramMessage(token, chatId, "⏳ Thinking...");
+
+  const toolLabels: Record<string, string> = {
+    web_search: "Searching the web",
+    fetch_url: "Fetching URL",
+    run_python: "Running Python",
+    run_react: "Running React",
+    run_shell: "Running command",
+    read_file: "Reading file",
+    write_file: "Writing file",
+    list_files: "Listing files",
+    list_skills: "Listing skills",
+    load_skill: "Loading skill",
+    clawhub_search: "Searching ClawHub",
+    clawhub_install: "Installing skill",
+    spawn_subagent: "Spawning subagent",
+  };
+
   try {
     let result;
     try {
-      result = await runAgentLoop(chatMessages, systemPrompt, {});
+      result = await runAgentLoop(chatMessages, systemPrompt, {
+        signal: controller.signal,
+        onToolCall: async (name: string) => {
+          const label = toolLabels[name] || name;
+          await sendTelegramMessage(token, chatId, `🔧 ${label}...`);
+        },
+      });
     } catch {
       result = await callAgent(chatMessages, systemPrompt);
     }
@@ -178,6 +217,8 @@ async function replyToTelegramMessage(chatId: string, text: string, username: st
   } catch (err: any) {
     console.error("[Telegram] agent error:", err.message);
     await sendTelegramMessage(token, chatId, `Error: ${err.message}`);
+  } finally {
+    unregisterActiveSession(sessionId);
   }
 }
 

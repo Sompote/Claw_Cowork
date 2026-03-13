@@ -2,11 +2,21 @@ import { Router } from "express";
 import { v4 as uuid } from "uuid";
 import { getTasks, saveTasks } from "../services/data";
 import { scheduleTask, stopTask } from "../services/scheduler";
+import { getActiveAgentSessions, killAgentSession } from "../services/socket";
 
 export const tasksRouter = Router();
 
 tasksRouter.get("/", (_req, res) => {
   res.json(getTasks());
+});
+
+tasksRouter.get("/active-agents", (_req, res) => {
+  res.json(getActiveAgentSessions());
+});
+
+tasksRouter.delete("/active-agents/:sessionId", (req, res) => {
+  const killed = killAgentSession(req.params.sessionId);
+  res.json({ success: killed });
 });
 
 tasksRouter.post("/", (req, res) => {

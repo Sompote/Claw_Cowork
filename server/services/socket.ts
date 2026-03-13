@@ -31,9 +31,67 @@ function buildMainSystemPrompt(extra?: { workspaceInfo?: string; projectContext?
   });
 }
 
+// Track sessions currently being processed
+interface ActiveSession {
+  status: string;
+  tool?: string;
+  title: string;
+  startedAt: string;
+  controller: AbortController;
+}
+const activeAgentSessions = new Map<string, ActiveSession>();
+
+function emitStatus(socket: Socket, sessionId: string, data: { status: string; tool?: string; args?: any }) {
+  const existing = activeAgentSessions.get(sessionId);
+  if (existing) {
+    existing.status = data.status;
+    existing.tool = data.tool;
+  }
+  socket.emit("chat:status", { ...data, sessionId });
+}
+
+function clearActiveSession(sessionId: string) {
+  activeAgentSessions.delete(sessionId);
+}
+
+export function getActiveAgentSessions() {
+  const result: Record<string, { status: string; tool?: string; title: string; startedAt: string }> = {};
+  activeAgentSessions.forEach((v, k) => {
+    result[k] = { status: v.status, tool: v.tool, title: v.title, startedAt: v.startedAt };
+  });
+  return result;
+}
+
+export function killAgentSession(sessionId: string): boolean {
+  const session = activeAgentSessions.get(sessionId);
+  if (!session) return false;
+  session.controller.abort();
+  activeAgentSessions.delete(sessionId);
+  return true;
+}
+
+export function registerActiveSession(sessionId: string, title: string, controller: AbortController) {
+  activeAgentSessions.set(sessionId, { status: "thinking", title, startedAt: new Date().toISOString(), controller });
+}
+
+export function unregisterActiveSession(sessionId: string) {
+  activeAgentSessions.delete(sessionId);
+}
+
 export function setupSocket(io: Server): void {
   io.on("connection", (socket: Socket) => {
     console.log("Client connected:", socket.id);
+
+    // Send current active sessions so client can restore status after refresh
+    if (activeAgentSessions.size > 0) {
+      const active: Record<string, { status: string; tool?: string }> = {};
+      activeAgentSessions.forEach((v, k) => { active[k] = { status: v.status, tool: v.tool }; });
+      socket.emit("chat:active_sessions", active);
+    }
+
+    socket.on("agent:kill", (data: { sessionId: string }) => {
+      killAgentSession(data.sessionId);
+    });
 
     // ─── Global Chat ────────────────────────────────────────────────────────
     socket.on(
@@ -63,7 +121,7 @@ export function setupSocket(io: Server): void {
         if (pythonMatch) {
           const settings = getSettings();
           const sandboxDir = settings.sandboxDir || path.resolve("sandbox");
-          socket.emit("chat:status", { status: "running_python" });
+          emitStatus(socket, sessionId, { status: "running_python" });
           const result = await runPython(pythonMatch[1], sandboxDir);
           const resultMsg = [
             result.stdout && `Output:\n\`\`\`\n${result.stdout}\`\`\``,
@@ -80,6 +138,7 @@ export function setupSocket(io: Server): void {
             files: result.outputFiles,
           });
           saveChatHistory(sessions);
+          clearActiveSession(sessionId);
           socket.emit("chat:response", {
             sessionId,
             content: assistantMsg,
@@ -127,18 +186,26 @@ export function setupSocket(io: Server): void {
           (chatMessages[lastIdx] as any).content = contentParts;
         }
 
-        socket.emit("chat:status", { status: "thinking" });
+        const controller = new AbortController();
+        activeAgentSessions.set(sessionId, {
+          status: "thinking",
+          title: session.title,
+          startedAt: new Date().toISOString(),
+          controller,
+        });
+        emitStatus(socket, sessionId, { status: "thinking" });
         const outputFiles: string[] = [];
 
         try {
           const result = await runAgentLoop(chatMessages, buildMainSystemPrompt(), {
             onToolCall: (name, args) => {
-              socket.emit("chat:status", { status: "tool_call", tool: name, args });
+              emitStatus(socket, sessionId, { status: "tool_call", tool: name, args });
             },
             onToolResult: (name, toolResult) => {
-              socket.emit("chat:status", { status: "tool_result", tool: name });
+              emitStatus(socket, sessionId, { status: "tool_result", tool: name });
               if (toolResult?.outputFiles) outputFiles.push(...toolResult.outputFiles);
             },
+            signal: controller.signal,
           });
 
           if (result.content) {
@@ -156,6 +223,7 @@ export function setupSocket(io: Server): void {
             files: outputFiles.length > 0 ? outputFiles : undefined,
           });
           saveChatHistory(sessions);
+          clearActiveSession(sessionId);
           socket.emit("chat:response", {
             sessionId,
             content: fullResponse,
@@ -175,6 +243,7 @@ export function setupSocket(io: Server): void {
               files: outputFiles.length > 0 ? outputFiles : undefined,
             });
             saveChatHistory(sessions);
+            clearActiveSession(sessionId);
             socket.emit("chat:response", {
               sessionId,
               content: fallback,
@@ -185,6 +254,7 @@ export function setupSocket(io: Server): void {
             const errMsg = `Error: ${fallbackErr.message || err.message}`;
             session.messages.push({ role: "assistant", content: errMsg, timestamp: new Date().toISOString() });
             saveChatHistory(sessions);
+            clearActiveSession(sessionId);
             socket.emit("chat:response", { sessionId, content: errMsg, done: true });
           }
         }
@@ -296,18 +366,26 @@ export function setupSocket(io: Server): void {
           (chatMessages[lastIdx] as any).content = contentParts;
         }
 
-        socket.emit("chat:status", { status: "thinking" });
+        const controller = new AbortController();
+        activeAgentSessions.set(sessionId, {
+          status: "thinking",
+          title: session.title,
+          startedAt: new Date().toISOString(),
+          controller,
+        });
+        emitStatus(socket, sessionId, { status: "thinking" });
         const outputFiles: string[] = [];
 
         try {
           const result = await runAgentLoop(chatMessages, systemPrompt, {
             onToolCall: (name, args) => {
-              socket.emit("chat:status", { status: "tool_call", tool: name, args });
+              emitStatus(socket, sessionId, { status: "tool_call", tool: name, args });
             },
             onToolResult: (name, toolResult) => {
-              socket.emit("chat:status", { status: "tool_result", tool: name });
+              emitStatus(socket, sessionId, { status: "tool_result", tool: name });
               if (toolResult?.outputFiles) outputFiles.push(...toolResult.outputFiles);
             },
+            signal: controller.signal,
           });
 
           if (result.content) {
@@ -325,6 +403,7 @@ export function setupSocket(io: Server): void {
             files: outputFiles.length > 0 ? outputFiles : undefined,
           });
           saveChatHistory(sessions);
+          clearActiveSession(sessionId);
           socket.emit("chat:response", {
             sessionId,
             content: fullResponse,
@@ -344,6 +423,7 @@ export function setupSocket(io: Server): void {
               files: outputFiles.length > 0 ? outputFiles : undefined,
             });
             saveChatHistory(sessions);
+            clearActiveSession(sessionId);
             socket.emit("chat:response", {
               sessionId,
               content: fallback,
@@ -354,6 +434,7 @@ export function setupSocket(io: Server): void {
             const errMsg = `Error: ${fallbackErr.message || err.message}`;
             session.messages.push({ role: "assistant", content: errMsg, timestamp: new Date().toISOString() });
             saveChatHistory(sessions);
+            clearActiveSession(sessionId);
             socket.emit("chat:response", { sessionId, content: errMsg, done: true });
           }
         }
